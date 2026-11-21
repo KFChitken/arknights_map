@@ -25,7 +25,7 @@ import { listenInvites, listenMembers, listenNow, listenRooms, sessions, siteSet
 import { loadSettings } from "@/lib/server/siteSettings";
 import { loadSongs } from "@/lib/server/songs";
 import { flushSaysNow, forgetSquad } from "@/lib/server/squad";
-import { forgetDanceBeats, openMode, settleRoom, sweepModes } from "@/lib/server/squadModes";
+import { forgetDanceBeats, openMode, settleRoom, startMatch, sweepModes } from "@/lib/server/squadModes";
 import { forgetGift } from "@/lib/server/squadGift";
 import { POST } from "./route";
 
@@ -171,44 +171,53 @@ const stopAt = (d: GiftData, r: number, stop: number) => {
   return d;
 };
 const headOf = async (u: Pick<User, "id">, name: string) => (await viewOf(u)).members.find((m) => m.name === name)!.head;
+/** W 的礼物 picked by its initiator, those given ready, and started now (every round the shortest, the seed 0) */
+async function play(u: Pick<User, "id">, ready: Pick<User, "id">[] = []) {
+  await openMode(u, { kind: "gift" }, clock, first);
+  for (const r of ready) expect((await post(r, "modein", { in: true })).status).toBe(200);
+  await startMatch(u, clock, first);
+}
 
 describe("W 的礼物", () => {
-  it("seats its opener, the room's 人机 and its own round the drum, its song and first round; a round's stop never told before it comes", async () => {
+  it("seats its initiator, those ready, the room's 人机 and its own round the drum, its song and first round; a round's stop never told before it comes", async () => {
     const { host, a, b, room } = await cast();
-    const t0 = clock;
     expect((await post(host, "bot", { do: "add" })).status).toBe(200);
     await openMode(a, { kind: "gift" }, clock, first);
+    expect((await post(b, "modein", { in: true })).status).toBe(200);
+    const t0 = clock + 1_000;
+    at(t0);
+    await startMatch(a, clock, first);
     const v = await viewOf(b);
-    const aH = handleOf(v, "a");
+    const [aH, bH] = [handleOf(v, "a"), handleOf(v, "b")];
     const bot = v.members.find((m) => m.bot)!.h;
     const mode = v.mode as GiftMode;
-    expect(mode).toMatchObject({ kind: "gift", by: aH, in: [{ h: aH, combo: 0 }], song: "s1", name: "Song 1", songAt: t0 + GIFT_LEAD_MS, seed: 0 });
+    expect(mode).toMatchObject({ kind: "gift", by: aH, begun: t0, played: 0, song: "s1", name: "Song 1", songAt: t0 + GIFT_LEAD_MS, seed: 0 });
+    expect(mode.in.map((m) => m.h).sort()).toEqual([aH, bH].sort());
     // the mode's own 人机, numbered after the room's
     expect(mode.bots.map((x) => [x.h, x.no])).toEqual([
       [-100, 2],
       [-101, 3],
       [-102, 4],
     ]);
-    expect(mode.rounds).toEqual([{ at: t0 + GIFT_LEAD_MS, seats: [aH, bot, -100, -101], from: 0, taps: [] }]);
+    expect(mode.rounds).toEqual([{ at: t0 + GIFT_LEAD_MS, seats: [aH, bH, bot, -100], from: 0, taps: [] }]);
     // its end as late as it could be, till its last round's song has stopped
     expect(mode.until).toBe(giftLatest(t0 + GIFT_LEAD_MS));
     // its song for the pages, as 龙门广场舞's
     expect(await post(b, "song")).toMatchObject({ status: 200, body: { song: "s1", url: expect.any(String) } });
-    // b in before it starts: in the first round, in the first seat of the mode's own 人机; everyone else stays put
-    expect((await post(b, "modein", { in: true })).status).toBe(200);
-    const bH = handleOf(v, "b");
-    expect((await giftOf(b)).rounds[0].seats).toEqual([aH, bot, bH, -101]);
+    // the host in after its start, before its first round: not seated, in the next round of it
+    expect((await post(host, "modein", { in: true })).status).toBe(200);
+    expect((await giftOf(b)).rounds[0].seats).toEqual([aH, bH, bot, -100]);
+    expect((await giftOf(b)).next).toEqual([1]);
     void room;
   });
 
   it("goes round as the players pass it, by itself after two seconds, and a 人机's as it holds; only the one holding it passes", async () => {
     const { a, b, room } = await cast();
-    await openMode(a, { kind: "gift" }, clock, first);
-    expect((await post(b, "modein", { in: true })).status).toBe(200);
+    await play(a, [b]);
     const v = await viewOf(a);
     const [aH, bH] = [handleOf(v, "a"), handleOf(v, "b")];
     const r0 = (await giftOf(a)).rounds[0];
-    expect(r0.seats).toEqual([aH, bH, -101, -102]);
+    expect(r0.seats).toEqual([aH, bH, -100, -101]);
     // not yet
     expect(await post(a, "pass")).toMatchObject({ status: 409, body: { error: "这一轮还没开始。" } });
     const heard = told(b);
@@ -238,8 +247,7 @@ describe("W 的礼物", () => {
 
   it("hits the one holding it as the song stops: turned over, 漏勺 for a minute with two or more playing, the next round from them", async () => {
     const { a, b, room } = await cast();
-    await openMode(a, { kind: "gift" }, clock, first);
-    expect((await post(b, "modein", { in: true })).status).toBe(200);
+    await play(a, [b]);
     const v = await viewOf(a);
     const bH = handleOf(v, "b");
     const data = await dataOf(room.id);
@@ -268,45 +276,37 @@ describe("W 的礼物", () => {
     expect(await post(b, "pass")).toMatchObject({ status: 409, body: { error: "这一轮已经停了。" } });
   });
 
-  it("puts no 漏勺 on one alone (practice), takes one coming in from the next round, and seats a 人机 where one went out", async () => {
-    const { a, b, room } = await cast();
-    await openMode(a, { kind: "gift" }, clock, first);
+  it("puts no 漏勺 on one alone (practice), seats a 人机 where one went out, and leaves one coming in after the start to the next round", async () => {
+    const { host, a, b, room } = await cast();
+    await play(a, [b]);
     const v = await viewOf(a);
     const [aH, bH] = [handleOf(v, "a"), handleOf(v, "b")];
     const data = await dataOf(room.id);
     const r0 = data.rounds[0];
-    // a alone holds it as it stops
+    expect(r0.seats).toEqual([aH, bH, -100, -101]);
+    // a holds it as it stops
     await setData(room.id, stopAt(data, 0, r0.at + 1_000));
-    // b comes in during the round: not in it
-    at(r0.at + 500);
-    expect((await post(b, "modein", { in: true })).status).toBe(200);
-    expect((await giftOf(a)).rounds[0].seats).toEqual([aH, -100, -101, -102]);
+    // b goes to watch during the round; the host comes in: in the next round of the match, never this one
+    at(r0.at + 300);
+    expect((await post(b, "modein", { in: false })).status).toBe(200);
+    expect((await post(host, "modein", { in: true })).status).toBe(200);
     at(r0.at + 1_100);
     await sweepModes(clock);
-    // b's coming makes two playing at the stop: a wears it (two in it as it stopped)
+    // alone at the stop: a hit, no 漏勺
     const mode = await giftOf(a);
     expect(mode.rounds[0]).toMatchObject({ hit: 0 });
-    expect(mode.in.find((m) => m.h === aH)?.combo).toBe(1);
-    expect(await headOf(b, "a")).toBeDefined();
-    // b sits in the next round, in a seat of the mode's own
-    expect(mode.rounds[1].seats).toEqual([aH, bH, -101, -102]);
-    // b goes to watch before it starts: their seat a 人机's again
-    expect((await post(b, "modein", { in: false })).status).toBe(200);
-    expect((await giftOf(a)).rounds[1].seats).toEqual([aH, -100, -101, -102]);
-    // alone at the next stop: no 漏勺 (a's from before ends first), a hit still counted
-    const d1 = await dataOf(room.id);
-    await setData(room.id, stopAt(d1, 1, d1.rounds[1].at + 500));
-    at(d1.rounds[1].at + 600);
-    const before = await headOf(b, "a");
-    await settleRoom(room.id, clock);
-    expect(await headOf(b, "a")).toEqual(before);
-    expect((await giftOf(a)).in).toEqual([{ h: aH, combo: 2 }]);
+    expect(mode.in).toEqual([{ h: aH, combo: 1 }]);
+    expect(await headOf(b, "a")).toBeUndefined();
+    // the next round: b's seat a 人机's, the host not in it
+    expect(mode.rounds[1].seats).toEqual([aH, -102, -100, -101]);
+    expect(mode.next).toEqual([1]);
+    expect(await post(host, "pass")).toMatchObject({ status: 409 });
   });
 
-  it("plays five rounds, then its results, and ends; with no player left it ends at the next stop", async () => {
+  it("plays five rounds, then its results, and waits again; with no player left the round ends at the next stop, and with nobody ready the match goes", async () => {
     const { a, b, room } = await cast();
     const t0 = clock;
-    await openMode(a, { kind: "gift" }, clock, first);
+    await play(a);
     const data = await dataOf(room.id);
     expect(data.plan).toHaveLength(GIFT_ROUNDS);
     expect(data.plan[0]).toEqual({ at: t0 + GIFT_LEAD_MS, stop: t0 + GIFT_LEAD_MS + GIFT_ROUND_MIN_MS });
@@ -321,22 +321,23 @@ describe("W 的礼物", () => {
     const heard = told(b);
     at(until + 1);
     expect(await sweepModes(clock)).toBe(1);
-    expect((await viewOf(a)).mode).toBeNull();
-    expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "mode", on: false } });
+    expect((await viewOf(a)).mode).toMatchObject({ kind: "gift", wait: true, played: 1, in: [{ h: handleOf(await viewOf(a), "a"), combo: 0 }] });
+    expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "mode" } });
     expect(await viewOf(a)).not.toHaveProperty("modeAgain");
-    // again at once, and a goes to watch: at the first stop no one plays it, and it ends
-    await openMode(a, { kind: "gift" }, clock, first);
+    // 再来一局 at once, and a goes to watch: at the first stop no one plays it, the round is over, and nobody is ready
+    await startMatch(a, clock, first);
     expect((await post(a, "modein", { in: false })).status).toBe(200);
+    expect((await giftOf(a)).kind).toBe("gift");
     const d2 = await dataOf(room.id);
     at(d2.plan[0].stop + 1);
     expect(await settleRoom(room.id, clock)).toEqual({ changed: true, ended: true });
     expect((await viewOf(a)).mode).toBeNull();
-    void b;
+    expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "mode", h: handleOf(await viewOf(a), "a"), on: false, lobby: "gone", mode: "gift" } });
   });
 
   it("lets only those in it pass", async () => {
     const { host, a, room } = await cast();
-    await openMode(a, { kind: "gift" }, clock, first);
+    await play(a);
     const r0 = (await dataOf(room.id)).rounds[0];
     at(r0.at + 100);
     expect(await post(host, "pass")).toMatchObject({ status: 409, body: { error: "先加入才能传。" } });

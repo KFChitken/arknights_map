@@ -18,7 +18,7 @@ import { listenInvites, listenMembers, listenNow, listenRooms, sessions, siteSet
 import { loadSettings } from "@/lib/server/siteSettings";
 import { loadSongs } from "@/lib/server/songs";
 import { flushSaysNow, forgetSquad } from "@/lib/server/squad";
-import { forgetDanceBeats, openMode, sweepModes } from "@/lib/server/squadModes";
+import { forgetDanceBeats, openMode, startMatch, sweepModes } from "@/lib/server/squadModes";
 import { forgetPassArt } from "@/lib/server/passArt";
 import { forgetQuizArt } from "@/lib/server/quizArt";
 import { POST } from "./route";
@@ -191,6 +191,13 @@ async function pictures() {
   return chars;
 }
 
+/** The quiz picked by its initiator, those given ready, and started now (the first of everything) */
+async function play(u: Pick<User, "id">, ready: Pick<User, "id">[] = [], now = clock) {
+  await openMode(u, { kind: "quiz" }, now, first);
+  for (const r of ready) expect((await post(r, "modein", { in: true })).status).toBe(200);
+  await startMatch(u, now, first);
+}
+
 describe("凯尔希随堂测", () => {
   it("asks five questions one after another, each three to pick from once begun; the first right gets the point, the room told", async () => {
     const { host, a, b, room } = await cast();
@@ -198,14 +205,13 @@ describe("凯尔希随堂测", () => {
     // no pictures here, and the songs to all: one of each kind there is; always the first, 方舟梗 when the songs are not
     await db.update(users).set({ email: "x@example.com" }).where(eq(users.id, host.id));
     vi.stubEnv("LISTEN", "admins");
-    await openMode(a, { kind: "quiz" }, clock, first);
+    await play(a, [b]);
     const t0 = clock;
     const mode = await quizOf(b);
-    expect(mode).toMatchObject({ kind: "quiz", by: 2, in: [{ h: 2, combo: 0 }], until: starts(t0, Array(5).fill("meme"))[4].ends + QUIZ_REVEAL_MS + QUIZ_RESULT_MS });
+    expect(mode).toMatchObject({ kind: "quiz", by: 2, begun: t0, in: [{ h: 2, combo: 0 }, { h: 3, combo: 0 }], until: starts(t0, Array(5).fill("meme"))[4].ends + QUIZ_REVEAL_MS + QUIZ_RESULT_MS });
     expect(mode.questions.map((q) => [q.kind, q.at, q.ends])).toEqual(starts(t0, Array(5).fill("meme")).map((q) => ["meme", q.at, q.ends]));
     // nothing of a question till it begins
     expect(mode.questions[0]).not.toHaveProperty("options");
-    expect((await post(b, "modein", { in: true })).status).toBe(200);
     const q0 = mode.questions[0];
     expect(await post(b, "question", { n: 0 })).toMatchObject({ status: 409, body: { error: "这题还没开始。" } });
     at(q0.at - 1_000);
@@ -238,20 +244,21 @@ describe("凯尔希随堂测", () => {
     const q1 = mode.questions[1];
     at(q1.ends + 100);
     expect(await post(a, "answer", { n: 1, pick: 0, at: q1.ends + 100 })).toMatchObject({ status: 409, body: { error: "这题时间到了。" } });
-    // in during a question: from the next on
+    // in after its start: the next round, never this one
     const q2 = mode.questions[2];
     at(q2.at + 500);
     expect((await post(host, "modein", { in: true })).status).toBe(200);
-    expect(await post(host, "answer", { n: 2, pick: 0 })).toMatchObject({ status: 409, body: { error: "这题你答过了。" } });
+    expect((await quizOf(b)).next).toEqual([1]);
+    expect(await post(host, "answer", { n: 2, pick: 0 })).toMatchObject({ status: 409, body: { error: "这局开始以后才进来的，下一局再答。" } });
     at(mode.questions[3].at + 100);
-    expect((await post(host, "answer", { n: 3, pick: 0 })).status).toBe(200);
+    expect(await post(host, "answer", { n: 3, pick: 0 })).toMatchObject({ status: 409, body: { error: "这局开始以后才进来的，下一局再答。" } });
+    expect((await post(b, "answer", { n: 3, pick: 0 })).status).toBe(200);
   });
 
-  it("puts 漏勺 on the lowest at the end, two or more in it, all of those tied there, none when all are", async () => {
+  it("puts 漏勺 on the lowest at the end, two or more in it, all of those tied there, none when all are; one asking for the next is not in it", async () => {
     const { host, a, b, room } = await cast();
     vi.stubEnv("LISTEN", "admins");
-    await openMode(a, { kind: "quiz" }, clock, first);
-    for (const u of [b, host]) expect((await post(u, "modein", { in: true })).status).toBe(200);
+    await play(a, [b, host]);
     const until = (await quizOf(a)).until;
     await db.update(squadMembers).set({ modeCombo: 3 }).where(eq(squadMembers.roomId, room.id));
     await db
@@ -266,11 +273,13 @@ describe("凯尔希随堂测", () => {
       [2, null, null],
       [3, 5, until + 60_000],
     ]);
-    // a tie all round, and one alone: nobody
-    at(clock + 120_000);
-    await openMode(b, { kind: "quiz" }, clock, first);
-    expect((await post(a, "modein", { in: true })).status).toBe(200);
+    // 再来一局 with the host out to watch and back for the next: a tie all round between a and b, nobody wears it
+    at(clock + 30_000);
+    await startMatch(a, clock, first);
+    expect((await post(host, "modein", { in: false })).status).toBe(200);
+    expect((await post(host, "modein", { in: true })).status).toBe(200);
     await db.update(squadMembers).set({ head: null, headUntil: null, modeCombo: 2 }).where(eq(squadMembers.roomId, room.id));
+    await db.update(squadMembers).set({ modeCombo: 0 }).where(sql`${squadMembers.roomId} = ${room.id} and ${squadMembers.handle} = 1`);
     at((await quizOf(a)).until + 1);
     await sweepModes(clock);
     expect((await db.select({ head: squadMembers.head }).from(squadMembers).where(eq(squadMembers.roomId, room.id))).every((r) => r.head === null)).toBe(true);
@@ -280,7 +289,7 @@ describe("凯尔希随堂测", () => {
     const chars = await pictures();
     const { a } = await cast();
     vi.stubEnv("LISTEN", "admins");
-    await openMode(a, { kind: "quiz" }, clock, first);
+    await play(a);
     const mode = await quizOf(a);
     expect(mode.questions.map((q) => q.kind)).toEqual(Array(5).fill("sil"));
     at(mode.questions[0].at);
@@ -307,7 +316,7 @@ describe("凯尔希随堂测", () => {
   it("asks a song's intro only when everyone in the room can hear it, its link to each who can", async () => {
     const { a } = await cast();
     // LISTEN on: everyone hears; no pictures: intro first of what there is
-    await openMode(a, { kind: "quiz" }, clock, first);
+    await play(a);
     const mode = await quizOf(a);
     // three songs: three intros, never the same song twice, then 方舟梗
     expect(mode.questions.map((q) => q.kind)).toEqual(["intro", "intro", "intro", "meme", "meme"]);
@@ -316,11 +325,11 @@ describe("凯尔希随堂测", () => {
     const q = (await post(a, "question", { n: 0 })).body as unknown as QuizAsk;
     expect(q.url).toMatch(/^\/music\//);
     expect(q.options.sort()).toEqual(["Song 1", "Song 2", "Song 3"]);
-    // one who cannot hear 听歌: no intro at all
+    // one who cannot hear 听歌: no intro at all in the next round
     at(clock + 600_000);
     await sweepModes(clock);
     vi.stubEnv("LISTEN", "admins");
-    await openMode(a, { kind: "quiz" }, clock + 60_000, first);
+    await startMatch(a, clock + 60_000, first);
     expect((await quizOf(a)).questions.every((x) => x.kind === "meme")).toBe(true);
   });
 });

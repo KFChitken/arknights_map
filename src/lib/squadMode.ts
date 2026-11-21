@@ -6,6 +6,14 @@ import { woodIn, woodNow } from "./squadFire";
  * after which anyone may open the next at once. The fight goes on above it, and a round starting never stops it. The
  * server keeps it (src/lib/server/squadModes.ts) and judges everything; the page draws it.
  *
+ * The matches (MATCH_KINDS: 凯尔希随堂测, W 的礼物, 企鹅物流急件赛) wait for people first (等人): the first to pick one
+ * is its initiator (发起人), ready from the start; others ready themselves (准备) or not; only the initiator starts it
+ * (开始), with those ready, 人机 in the empty seats where the match has them, one alone practising. One coming in after
+ * the start waits for the next round (下一局算我). A round over, it waits again with everyone who played it or asked for
+ * the next still ready, for the initiator's 再来一局. An initiator gone (not ready any more, out to watch, out of the
+ * room) hands it to the one ready earliest; with nobody ready it goes, and it goes LOBBY_IDLE_MS after anyone last did
+ * anything in it while it waits.
+ *
  * 龙门广场舞 (dance): its opener leads, those who join dance in a row to one of 听歌's songs, to its table of beats
  * (src/lib/dance.ts): the song 卫戍的一起听 is playing, else one at random that has beats. A tap of 跳 on a beat (within
  * DANCE_WINDOW_MS of one) puts one's combo up, and the dance gets livelier (晃 → 跳 → 转圈); off the beat, back to 0.
@@ -16,6 +24,25 @@ import { woodIn, woodNow } from "./squadFire";
 export const MODE_KINDS = ["dance", "quiz", "gift", "race", "stack"] as const;
 export type SquadModeKind = (typeof MODE_KINDS)[number];
 export const isModeKind = (v: unknown): v is SquadModeKind => typeof v === "string" && (MODE_KINDS as readonly string[]).includes(v);
+
+/** The matches: started by their initiator once those who want to play are ready, round after round */
+export const MATCH_KINDS = ["quiz", "gift", "race"] as const;
+export type MatchKind = (typeof MATCH_KINDS)[number];
+export const isMatchKind = (v: unknown): v is MatchKind => typeof v === "string" && (MATCH_KINDS as readonly string[]).includes(v);
+/** A match waiting goes this long after anyone last did anything in it (picked it, readied, unreadied, a round over) */
+export const LOBBY_IDLE_MS = 180_000;
+/** One who said 不了 to a match is not asked again for it by anyone's shout within this long */
+export const LOBBY_ASK_AGAIN_MS = 30_000;
+/**
+ * A match waiting as the server keeps it (squad_rooms.mode_data): how many rounds were played in it so far. While a
+ * round plays, its own data (QuizData, GiftData, RaceData) with when its initiator started it (begun) and the rounds
+ * before it (played).
+ */
+export type LobbyData = { wait: true; played: number };
+export type MatchRound = { begun: number; played: number };
+export const isLobbyData = (v: unknown): v is LobbyData => typeof v === "object" && v !== null && (v as LobbyData).wait === true;
+/** One ready (modeIn) at `tapAt` plays the round begun at `begun` when they readied by then; else they wait for the next */
+export const inRound = (tapAt: number | null, begun: number) => tapAt === null || tapAt <= begun;
 
 /** 龙门广场舞: its song starts this long after it opens (time for the pages to fetch it), unless 一起听's is playing */
 export const DANCE_LEAD_MS = 3_000;
@@ -64,21 +91,33 @@ export const modeEnds = (kind: string, until: number, last: number) =>
  * those in it (not only watching) with each one's combo (a quiz's score); when it ends by itself unless something
  * happens, and when it would at the latest (until)
  */
-type ModeBase = { by: number; at: number; in: { h: number; combo: number }[]; endsAt: number; until: number };
+type ModeCore = { by: number; at: number; in: { h: number; combo: number }[]; endsAt: number; until: number };
+type ModeBase = ModeCore & { wait?: undefined };
+/**
+ * A match waiting (等人): its initiator (by) and since when it waits for people (at, the same for every round of it);
+ * those ready (in: the initiator first, then as they readied); how many rounds were played in it so far; when it goes
+ * by itself with nobody doing anything (endsAt, until)
+ */
+export type LobbyMode = ModeCore & { kind: MatchKind; wait: true; played: number };
+/**
+ * A match's round as it plays: when its initiator started it (begun), how many rounds before it (played), those in it
+ * (in) and those who asked for the next (next, by number, as they asked)
+ */
+type RoundBase = ModeBase & { begun: number; played: number; next: number[] };
 /** 龙门广场舞: its song (id and name), where its start is on the server's clock (songAt, the song's 0) */
 export type DanceMode = ModeBase & { kind: "dance"; song: string; name: string; songAt: number };
 /** 凯尔希随堂测: its questions, each as far as it has gone (QuizQuestion) */
-export type QuizMode = ModeBase & { kind: "quiz"; questions: QuizQuestion[] };
+export type QuizMode = RoundBase & { kind: "quiz"; questions: QuizQuestion[] };
 /**
  * W 的礼物: its song as 龙门广场舞's (its 0 at songAt on the server's clock); the seed its 人机 pass by; the rounds
  * begun (GiftRound); the mode's own 人机 (GiftBot). Its points (in) are how often each was hit.
  */
-export type GiftMode = ModeBase & { kind: "gift"; song: string; name: string; songAt: number; seed: number; rounds: GiftRound[]; bots: GiftBot[] };
+export type GiftMode = RoundBase & { kind: "gift"; song: string; name: string; songAt: number; seed: number; rounds: GiftRound[]; bots: GiftBot[] };
 /**
  * 企鹅物流急件赛: its start, the lanes with what their players did (RaceLane), the obstacles, the seed its 人机 run by,
  * the mode's own 人机; once it is over and the server settled it, the order they signed in (RaceEnd)
  */
-export type RaceMode = ModeBase & { kind: "race"; start: number; seed: number; lanes: RaceLane[]; obs: RaceObstacle[]; bots: GiftBot[]; end?: RaceEnd };
+export type RaceMode = RoundBase & { kind: "race"; start: number; seed: number; lanes: RaceLane[]; obs: RaceObstacle[]; bots: GiftBot[]; end?: RaceEnd };
 /**
  * 基建加盖: its round (from 1) and when it began, the tower's blocks, how it fell (once it has), the room's highest, and
  * the blocks in your hand (n at `at`, as 篝火's sticks; none while you are not in it)
@@ -92,7 +131,7 @@ export type StackMode = ModeBase & {
   best: number;
   hand?: { n: number; at: number | null };
 };
-export type SquadMode = DanceMode | QuizMode | GiftMode | RaceMode | StackMode;
+export type SquadMode = DanceMode | QuizMode | GiftMode | RaceMode | StackMode | LobbyMode;
 
 // ---- 凯尔希随堂测 ----
 
@@ -102,8 +141,9 @@ export type SquadMode = DanceMode | QuizMode | GiftMode | RaceMode | StackMode;
  * server so a page cannot tell whose; which song this intro is (intro), from 听歌's songs, drawn only when everyone in
  * the room could hear it then; or one of the design thread's 方舟梗 questions (meme, src/data/quiz-meme.json). Each
  * answers each question once; the first right gets a point. A question takes QUIZ_ANSWER_MS, an intro's
- * QUIZ_INTRO_MS (as long as it plays); then QUIZ_REVEAL_MS showing the answer, and the next. After the last, QUIZ_RESULT_MS of results; with two or more in it, the lowest (all of those
- * tied there, unless everyone is) wear 漏勺 QUIZ_LADLE_MS. One alone practises. One coming in answers from the next.
+ * QUIZ_INTRO_MS (as long as it plays); then QUIZ_REVEAL_MS showing the answer, and the next. After the last,
+ * QUIZ_RESULT_MS of results; with two or more in it, the lowest (all of those tied there, unless everyone is) wear 漏勺
+ * QUIZ_LADLE_MS. One alone practises. Only those in the round answer; one coming in after its start waits for the next.
  */
 export const QUIZ_QUESTIONS = 5;
 export const QUIZ_LEAD_MS = 3_000;
@@ -142,7 +182,7 @@ export type QuizQuestion = {
  * part of a picture is cut (seed), and who got it right first and how fast
  */
 export type QuizData = {
-  qs: { kind: QuizKind; at: number; ends: number; ids: string[]; answer: number; seed: number; first?: { h: number; ms: number } }[];
+  qs: { kind: QuizKind; at: number; ends: number; ids: string[]; answer: number; seed: number; first?: { h: number; ms: number }; did?: number[] }[];
 };
 
 /** When each question starts and its answers stop, from the quiz's start (at): one after another, each with its reveal */
@@ -197,8 +237,9 @@ export type DanceSong = { song: string; dance: string; url?: string; lite?: stri
 
 /**
  * W 的礼物 (gift): 击鼓传花 with W's gift, a box with its fuse lit, round GIFT_SEATS seats about a drum: those in it
- * first (as they came), the room's 人机, then the mode's own (in it alone, numbered from GIFT_BOT_FROM down) to fill
- * them; one coming in takes a seat from the next round. The drum beats to a song as 龙门广场舞's. Each round the song
+ * first (as they readied), the room's 人机, then the mode's own (in it alone, numbered from GIFT_BOT_FROM down) to fill
+ * them; one going out to watch leaves their seat to a 人机 from the next round, and one coming in after the start
+ * waits for the next round. The drum beats to a song as 龙门广场舞's. Each round the song
  * plays GIFT_ROUND_MIN_MS–GIFT_ROUND_MAX_MS (decided as it opens, never told to the pages) while the gift goes round:
  * one holding it passes it (传) to the next seat, or it goes by itself GIFT_HOLD_MS on; a 人机 passes it after
  * giftBotHold. The song stops: 砰, the one holding it is turned over and, with two or more players in it, wears 漏勺

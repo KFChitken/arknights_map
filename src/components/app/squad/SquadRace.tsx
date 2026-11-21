@@ -8,7 +8,7 @@ import type { RoachAvatar, RoachColor } from "@/lib/types";
 import { WorldError } from "@/lib/world/types";
 import { picOf } from "../fish/words";
 import { SquadRoach } from "./SquadRoach";
-import { closeSquadModeCard, squadModeIn, squadOpenMode, squadRaceJump, squadRaceTap, squadServerNow, useSquadModeCard, useSquadRoom } from "./squading";
+import { closeSquadModeCard, squadModeIn, squadRaceJump, squadRaceTap, squadServerNow, useSquadModeCard, useSquadRoom } from "./squading";
 import "./squadModes.css";
 
 /**
@@ -310,7 +310,6 @@ export function RaceView({
   onJump,
   onJoin,
   onLeave,
-  onAgain,
 }: {
   room: SquadRoom;
   mode: RaceMode;
@@ -325,9 +324,9 @@ export function RaceView({
   onClose: () => void;
   onTap: () => void;
   onJump: () => void;
+  /** 下一局算我: one not in this round asks for the next */
   onJoin: () => void;
   onLeave: () => void;
-  onAgain: () => void;
 }) {
   const t = T.squad.race;
   const run = raceRun(mode, now);
@@ -370,9 +369,6 @@ export function RaceView({
             })}
           </ol>
           {players < 2 && <p className="end">{t.practice}</p>}
-          <button type="button" className="again" disabled={busy} onClick={onAgain}>
-            {t.again}
-          </button>
         </div>
       ) : (
         <>
@@ -395,13 +391,12 @@ export function RaceView({
                 {t.cheer}
               </button>
             </div>
-          ) : me ? (
-            <p className="qline">{t.queued}</p>
+          ) : me || mode.next.includes(room.you) ? (
+            <p className="qline">{T.squad.lobby.queued}</p>
           ) : (
             <div className="watch">
-              <span>{t.watching}</span>
               <button type="button" disabled={busy} onClick={onJoin}>
-                {t.join}
+                {T.squad.lobby.late}
               </button>
             </div>
           )}
@@ -431,7 +426,7 @@ export default function SquadRace() {
   const [width, setWidth] = useState(366);
   const [taps, setTaps] = useState<number[]>([]);
   const stageRef = useRef<HTMLDivElement>(null);
-  const mode = room?.mode?.kind === "race" && room.mode.at === openAt ? room.mode : null;
+  const mode = room?.mode?.kind === "race" && !room.mode.wait && room.mode.at === openAt ? room.mode : null;
   const open = Boolean(mode);
   const running = Boolean(mode && !mode.end && now < mode.start + RACE_MAX_MS + 2_000);
 
@@ -497,7 +492,6 @@ export default function SquadRace() {
       }}
       onJoin={() => void run(() => squadModeIn(true))}
       onLeave={() => void run(() => squadModeIn(false))}
-      onAgain={() => void run(() => squadOpenMode("race"))}
     />
   );
 }

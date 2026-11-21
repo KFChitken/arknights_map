@@ -97,6 +97,8 @@ export const squadApi = {
   mode: (kind: SquadModeKind) => call<{ now: number }>("mode", post({ kind })),
   /** 加入 the mode playing (in), or 不跳了，去围观 */
   modeIn: (into: boolean) => call<{ now: number }>("modein", post({ in: into })),
+  /** 开始: a match's initiator starts a round with those ready */
+  start: () => call<{ now: number }>("start", post({})),
   /** 跳: a tap in 龙门广场舞, at the server's clock as this page has it; on the beat or not, the combo after it */
   tap: (at: number) => call<{ now: number; combo: number; ok: boolean; counted: boolean }>("tap", post({ at })),
   /** 龙门广场舞's song: its beats, and its link to one 听歌 is open to */

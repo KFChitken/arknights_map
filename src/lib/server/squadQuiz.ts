@@ -1,11 +1,13 @@
 import "server-only";
-import { and, eq, inArray, isNull, lt, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { T } from "@/i18n";
 import { characterName } from "@/i18n/names";
 import { PASS_CATALOG, passChar, type PassChar } from "../passCatalog";
 import { NOT_IN_ROOM } from "../squad";
 import { THROWS } from "../squadFire";
 import {
+  inRound,
+  isLobbyData,
   QUIZ_EARLY_MS,
   QUIZ_FETCH_MS,
   QUIZ_LADLE_MS,
@@ -16,6 +18,7 @@ import {
   type QuizAsk,
   type QuizData,
   type QuizKind,
+  type MatchRound,
   type QuizQuestion,
 } from "../squadMode";
 import { db } from "./db";
@@ -30,11 +33,11 @@ import { songList } from "./songs";
 import { roomOf, tellSquadPlay } from "./squad";
 
 /**
- * 凯尔希随堂测 on the server (玩点什么; the rules in src/lib/squadMode.ts): its five questions made as it opens and
- * kept on the room (squad_rooms.mode_data) with their answers, never sent as they are; each question's three and its
- * picture or song given to the room's pages from just before it starts (askQuestion); each answer judged on the
- * server's clock, once a question a player, the first right one the point (answerQuiz); at its end (squadModes.ts
- * endModeIn), 漏勺 on the last.
+ * 凯尔希随堂测 on the server (玩点什么; the rules in src/lib/squadMode.ts): a round's five questions made as its
+ * initiator starts it and kept on the room (squad_rooms.mode_data) with their answers, never sent as they are; each
+ * question's three and its picture or song given to the room's pages from just before it starts (askQuestion); each
+ * answer judged on the server's clock, once a question each of the round's players (who answered kept on the question),
+ * the first right one the point (answerQuiz); at the round's end (squadModes.ts), 漏勺 on the last.
  */
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -161,8 +164,8 @@ async function quizOf(userId: string) {
   const mine = await roomOf(db, userId);
   if (!mine) throw notInRoom();
   const [room] = await db.select().from(squadRooms).where(eq(squadRooms.id, mine.room.id));
-  if (!room || room.mode !== "quiz" || !room.modeData || !room.modeUntil) throw refuse(409, T.server.squad.noMode);
-  return { room, data: room.modeData as QuizData, me: mine.me };
+  if (!room || room.mode !== "quiz" || !room.modeData || isLobbyData(room.modeData) || !room.modeUntil) throw refuse(409, T.server.squad.noMode);
+  return { room, data: room.modeData as QuizData & Partial<MatchRound>, me: mine.me };
 }
 
 const questionOf = (data: QuizData, n: unknown) => (Number.isInteger(n) && (n as number) >= 0 && (n as number) < data.qs.length ? data.qs[n as number] : null);
@@ -192,56 +195,63 @@ export async function askQuestion(user: Pick<UserRow, "id" | "email">, body: Rec
 
 /**
  * An answer (pick: 0–2) to question n, at `at` (the server's clock as the page has it: taken within QUIZ_EARLY_MS
- * of now, else now): once a question a player in the quiz; in its time; the first right gets the point, the room told.
+ * of now, else now): once a question each player of the round (one who asked for the next one does not answer this
+ * one); in its time; the first right gets the point, the room told.
  */
 export async function answerQuiz(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()): Promise<QuizAnswered> {
   const { room, data, me } = await quizOf(user.id);
   const q = questionOf(data, body.n);
   if (!q || !Number.isInteger(body.pick) || (body.pick as number) < 0 || (body.pick as number) > 2) throw refuse(400, T.server.squad.badQuestion);
   if (!me.modeIn) throw refuse(409, T.server.squad.notAnswering);
+  if (!inRound(me.modeTapAt?.getTime() ?? null, data.begun ?? room.modeAt?.getTime() ?? 0)) throw refuse(409, T.server.squad.notThisRound);
   const asked = typeof body.at === "number" && Number.isFinite(body.at) ? body.at : now;
   const t = asked >= now - QUIZ_EARLY_MS && asked <= now + 50 ? asked : now;
   if (t < q.at) throw refuse(409, T.server.squad.notYet);
   if (t > q.ends) throw refuse(409, T.server.squad.answerLate);
-  // once a question: one who joined during it, or answered it, has a tap from after its start
-  const mine = and(eq(squadMembers.roomId, room.id), eq(squadMembers.handle, me.handle), isNull(squadMembers.leftAt), eq(squadMembers.modeIn, true));
-  const [took] = await db
-    .update(squadMembers)
-    .set({ modeTapAt: new Date(now) })
-    .where(and(mine, or(isNull(squadMembers.modeTapAt), lt(squadMembers.modeTapAt, new Date(q.at)))))
-    .returning({ h: squadMembers.handle });
-  if (!took) throw refuse(409, T.server.squad.answered);
+  const n = body.n as number;
   const right = body.pick === q.answer;
-  let first = false;
-  if (right) {
-    first = await db.transaction(async (tx: Tx) => {
-      const [locked] = await tx.select().from(squadRooms).where(eq(squadRooms.id, room.id)).for("update");
-      const fresh = locked?.mode === "quiz" ? (locked.modeData as QuizData | null) : null;
-      const fq = fresh?.qs[body.n as number];
-      if (!fresh || !fq || fq.first) return false;
-      fq.first = { h: me.handle, ms: Math.max(0, Math.round(t - q.at)) };
-      await tx.update(squadRooms).set({ modeData: fresh }).where(eq(squadRooms.id, room.id));
+  const mine = and(eq(squadMembers.roomId, room.id), eq(squadMembers.handle, me.handle), isNull(squadMembers.leftAt), eq(squadMembers.modeIn, true));
+  // once a question each: who answered kept on the question, the room's row locked
+  const first = await db.transaction(async (tx: Tx) => {
+    const [locked] = await tx.select().from(squadRooms).where(eq(squadRooms.id, room.id)).for("update");
+    const fresh = locked?.mode === "quiz" && !isLobbyData(locked.modeData) ? (locked.modeData as QuizData | null) : null;
+    const fq = fresh?.qs[n];
+    if (!fresh || !fq) throw refuse(409, T.server.squad.noMode);
+    if (fq.did?.includes(me.handle)) throw refuse(409, T.server.squad.answered);
+    fq.did = [...(fq.did ?? []), me.handle];
+    const won = right && !fq.first;
+    if (won) fq.first = { h: me.handle, ms: Math.max(0, Math.round(t - q.at)) };
+    await tx.update(squadRooms).set({ modeData: fresh }).where(eq(squadRooms.id, room.id));
+    if (won) {
       const [row] = await tx.select({ combo: squadMembers.modeCombo }).from(squadMembers).where(mine);
       await tx
         .update(squadMembers)
         .set({ modeCombo: (row?.combo ?? 0) + 1 })
         .where(mine);
-      return true;
-    });
-    if (first) await tellSquadPlay(room.id, { kind: "quiz", h: me.handle });
-  }
+    }
+    return won;
+  });
+  if (first) await tellSquadPlay(room.id, { kind: "quiz", h: me.handle });
   return { right, first, answer: q.answer, now };
 }
 
 /**
- * A quiz over (its end at `at`): with two or more in it, 漏勺 on the lowest (all of those tied there, unless everyone
- * is) for QUIZ_LADLE_MS from its end. Within the transaction ending the mode, before its members are let go.
+ * A quiz's round over (its end at `at`; begun as its initiator started it): with two or more in it, 漏勺 on the lowest
+ * (all of those tied there, unless everyone is) for QUIZ_LADLE_MS from its end; those who asked for the next round
+ * are not in this one. Within the transaction ending it, before the combos go back to 0.
  */
-export async function endQuiz(tx: Tx, roomId: string, at: number) {
+export async function endQuiz(tx: Tx, roomId: string, at: number, begun: number) {
   const rows = await tx
     .select({ h: squadMembers.handle, combo: squadMembers.modeCombo })
     .from(squadMembers)
-    .where(and(eq(squadMembers.roomId, roomId), isNull(squadMembers.leftAt), eq(squadMembers.modeIn, true)));
+    .where(
+      and(
+        eq(squadMembers.roomId, roomId),
+        isNull(squadMembers.leftAt),
+        eq(squadMembers.modeIn, true),
+        or(isNull(squadMembers.modeTapAt), lte(squadMembers.modeTapAt, new Date(begun))),
+      ),
+    );
   const last = quizLast(rows);
   if (!last.length) return;
   await tx

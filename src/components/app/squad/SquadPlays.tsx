@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { fmt, T } from "@/i18n";
 import type { SquadRoom } from "@/lib/squad";
 import { fireLevel, WOOD_MAX, woodNow } from "@/lib/squadFire";
-import { MODE_KINDS, type SquadModeKind } from "@/lib/squadMode";
+import { isMatchKind, MODE_KINDS, type SquadModeKind } from "@/lib/squadMode";
 import { WorldError } from "@/lib/world/types";
 import { openFishWin, useFishWin } from "../fish/winStore";
 import { openSquadFire, openSquadModeCard, squadModeIn, squadOpenMode, squadServerNow } from "./squading";
@@ -15,18 +15,32 @@ import "./squadModes.css";
  * a tile with its icon and its name, nothing more. 钓鳞's icon shows how its line stands (none in the water, in it, a
  * bite); 添柴's shows the fire (out, small, big, roaring) with its level, and the sticks in your hand. The modes of
  * 玩点什么 (one at a time) open, join or show the one playing as their tile is tapped; one that cannot be opened now
- * says why under the tiles.
+ * says why under the tiles. A match (凯尔希随堂测, W 的礼物, 企鹅物流急件赛) waits for people first: its tile says
+ * how many are ready (等人 n/4) and readies you; while a round plays, one not in it asks for the next (下一局).
  */
 
-/** What a mode's tile does for the player now (on the server's clock): open it, join it, open its card, or nothing yet */
-export type ModeRow = { kind: SquadModeKind; label: string; does: "open" | "join" | "look" | null };
+/**
+ * What a mode's tile does for the player now (on the server's clock): open it (a match: 发起), join it, ready for it
+ * (a match waiting), ask for its next round (a round playing), open its card, or nothing yet; and its tag
+ */
+export type ModeRow = { kind: SquadModeKind; label: string; does: "open" | "join" | "look" | "ready" | "next" | null; tag?: string };
 
 export function modeRow(room: SquadRoom, kind: SquadModeKind, now: number): ModeRow {
   const t = T.squad.modes;
   const mode = room.mode && room.mode.endsAt > now ? room.mode : null;
-  if (mode?.kind === kind) return mode.in.some((m) => m.h === room.you) ? { kind, label: t.in, does: "look" } : { kind, label: t.join, does: "join" };
-  if (mode) return { kind, label: t.wait, does: null };
-  return { kind, label: t.open, does: "open" };
+  if (mode?.kind === kind) {
+    const mine = mode.in.some((m) => m.h === room.you);
+    if (mode.wait) {
+      const tag = fmt(t.waitTag, { n: mode.in.length });
+      return mine || mode.by === room.you ? { kind, label: tag, does: "look", tag } : { kind, label: tag, does: "ready", tag };
+    }
+    if (isMatchKind(kind) && !mine) {
+      return "next" in mode && mode.next.includes(room.you) ? { kind, label: t.in, does: "look", tag: T.squad.plays.in } : { kind, label: t.nextTag, does: "next", tag: t.nextTag };
+    }
+    return mine ? { kind, label: t.in, does: "look", tag: T.squad.plays.in } : { kind, label: t.join, does: "join", tag: T.squad.plays.join };
+  }
+  if (mode) return { kind, label: fmt(t.wait, { mode: t.names[mode.kind] }), does: null };
+  return { kind, label: isMatchKind(kind) ? t.pick : t.open, does: "open" };
 }
 
 /** How 钓鳞's line stands: none in the water, in it, or bitten */
@@ -191,7 +205,7 @@ export function PlayGrid({
         </button>
         {MODE_KINDS.map((kind) => {
           const row = modeRow(room, kind, now);
-          const tag = row.does === "look" ? t.in : row.does === "join" ? t.join : null;
+          const tag = row.tag ?? null;
           return (
             <button
               key={kind}
@@ -204,14 +218,18 @@ export function PlayGrid({
             >
               <span className="pic">
                 <ModePlayIcon kind={kind} />
-                {tag && <em className={`tag${row.does === "join" ? " join" : row.does === "look" ? " in" : ""}`}>{tag}</em>}
+                {tag && <em className={`tag${row.does === "join" || row.does === "ready" || row.does === "next" ? " join" : row.does === "look" ? " in" : ""}`}>{tag}</em>}
               </span>
               <b>{T.squad.modes.names[kind]}</b>
             </button>
           );
         })}
       </div>
-      {playing && <p className="now">{fmt(t.playing, { mode: T.squad.modes.names[playing.kind], n: playing.in.length })}</p>}
+      {playing && (
+        <p className="now">
+          {fmt(playing.wait ? t.waiting : t.playing, { mode: T.squad.modes.names[playing.kind], n: playing.in.length })}
+        </p>
+      )}
       {msg && (
         <p className="pmsg" role="status">
           {msg}
@@ -242,7 +260,8 @@ export default function SquadPlays({ room, onDone }: { room: SquadRoom; onDone?:
     }
     setBusy(true);
     try {
-      if (row.does === "join") await squadModeIn(true);
+      // 加入, 准备 and 下一局算我 alike put you in it (a match waiting: ready; a round playing: in the next)
+      if (row.does === "join" || row.does === "ready" || row.does === "next") await squadModeIn(true);
       else await squadOpenMode(row.kind);
       onDone?.();
     } catch (e) {

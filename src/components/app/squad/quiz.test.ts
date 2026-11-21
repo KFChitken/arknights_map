@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SquadMember, SquadRoom } from "@/lib/squad";
 import { QUIZ_ANSWER_MS, QUIZ_INTRO_MS, QUIZ_REVEAL_MS, QUIZ_RESULT_MS, quizTimes, type QuizAsk, type QuizKind, type QuizMode, type QuizQuestion } from "@/lib/squadMode";
 import { QuizView, ladleLine, quizPhase, quizRanks, resultLine, type QuizSound } from "./SquadQuiz";
-import { forgetSquadPage, loadSquadRoom, squadModeIn, squadQuizAnswer, squadQuizPicksNow, type QuizPicks } from "./squading";
+import { forgetSquadPage, loadSquadRoom, squadQuizAnswer, squadQuizPicksNow, type QuizPicks } from "./squading";
 import { modeRow } from "./SquadPlays";
 
 const NOW = Date.parse("2026-11-20T13:00:00+08:00");
@@ -34,7 +34,7 @@ const quiz = (more: Partial<QuizMode> = {}, qs: Partial<QuizQuestion>[] = []): Q
   const at = more.at ?? NOW - 3_000;
   const list = questions(at, KINDS, qs);
   const until = list[4].ends + QUIZ_REVEAL_MS + QUIZ_RESULT_MS;
-  return { kind: "quiz", by: 1, at, in: [{ h: 1, combo: 0 }, { h: 2, combo: 0 }], endsAt: until, until, questions: list, ...more };
+  return { kind: "quiz", by: 1, at, begun: at, played: 0, next: [], in: [{ h: 1, combo: 0 }, { h: 2, combo: 0 }], endsAt: until, until, questions: list, ...more };
 };
 const room = (more: Partial<SquadRoom> = {}): SquadRoom => ({
   id: "r1",
@@ -148,7 +148,7 @@ describe("凯尔希随堂测's card", () => {
 
   it("shows your pick as sent, then the right one with who was first and how fast, and what comes next", () => {
     const at = NOW;
-    const mine = (pick: QuizPicks["picks"][number]): QuizPicks => ({ at: NOW - 3_000, picks: { 0: pick }, joinedAt: null });
+    const mine = (pick: QuizPicks["picks"][number]): QuizPicks => ({ at: NOW - 3_000, picks: { 0: pick } });
     const r = room({ mode: quiz() });
     // sent, not judged yet: yours marked, nothing more to pick
     const sent = view(r, at + 900, { picks: mine({ pick: 1 }), asks: { 0: ask(0, "sil", { pic: PIC }) } });
@@ -183,7 +183,7 @@ describe("凯尔希随堂测's card", () => {
     expect(none).toContain('class="opt ok" disabled=""><b>A</b>');
     expect(none).toContain("<small>下一题 2 秒后</small>");
     // yours wrong, before anyone got it; then no one did
-    const picks: QuizPicks = { at: m.at, picks: { 0: { pick: 1, right: false, first: false, answer: 0 } }, joinedAt: null };
+    const picks: QuizPicks = { at: m.begun, picks: { 0: { pick: 1, right: false, first: false, answer: 0 } } };
     expect(resultLine(r, m.questions[0], picks.picks[0], NOW + 1_000)).toEqual({ text: "答错了", tone: "bad" });
     expect(resultLine(r, m.questions[0], picks.picks[0], NOW + QUIZ_ANSWER_MS)).toEqual({ text: "时间到，没人答对", tone: "bad" });
     // nothing to say yet
@@ -221,24 +221,18 @@ describe("凯尔希随堂测's card", () => {
     expect(html).toContain("<b>B</b><span>博士</span>");
   });
 
-  it("asks one watching to join from the next question, and one who joined during a question to wait for the next", () => {
+  it("leaves one not in the round to watch it, asking for the next round (下一局算我), and says so once asked", () => {
     const m = quiz({ in: [{ h: 2, combo: 0 }], by: 2 });
     const r = room({ mode: m });
     const watching = view(r, NOW + 1_000, { asks: { 0: ask(0, "sil", { pic: PIC }) } });
-    expect(watching).toContain("你在围观，加入以后从下一题开始答");
-    expect(watching).toContain(">下一题加入</button>");
+    expect(watching).toContain(">这局先围观 · 下一局算我</button>");
     expect(watching).not.toContain("不答了，去围观");
     expect(watching.match(/class="opt" disabled=""/g)).toHaveLength(3);
-    // in, but from during this question
-    const joined = room({ mode: quiz({ in: [{ h: 2, combo: 0 }, { h: 1, combo: 0 }], by: 2 }) });
-    const picks: QuizPicks = { at: m.at, picks: {}, joinedAt: NOW + 1_500 };
-    const late = view(joined, NOW + 2_000, { picks, asks: { 0: ask(0, "sil", { pic: PIC }) } });
-    expect(late).toContain("<span>下一题开始答</span>");
-    expect(late.match(/class="opt" disabled=""/g)).toHaveLength(3);
-    // the next one: answered as anyone's
-    const next = view(joined, m.questions[1].at + 100, { picks, asks: { 1: ask(1, "crop", { pic: PIC }) } });
-    expect(next).not.toContain("下一题开始答");
-    expect(next).toContain('<button type="button" class="opt"><b>A</b>');
+    // asked for the next: in it once this one is over, nothing to pick in this one
+    const queued = view(room({ mode: quiz({ in: [{ h: 2, combo: 0 }], by: 2, next: [1] }) }), NOW + 1_000, { asks: { 0: ask(0, "sil", { pic: PIC }) } });
+    expect(queued).toContain('<p class="qline">排进下一局了：这局跑完你就在里面</p>');
+    expect(queued).not.toContain("下一局算我</button>");
+    expect(queued.match(/class="opt" disabled=""/g)).toHaveLength(3);
   });
 
   it("gives everyone's place at the end, those with the same sharing it, and who wears 漏勺", () => {
@@ -267,9 +261,9 @@ describe("凯尔希随堂测's card", () => {
     expect(ladleLine(r, quiz({ in: [{ h: 1, combo: 4 }] }))).toBe("一个人自己练，不扣漏勺");
   });
 
-  it("is a row of 玩点什么 as the dance is", () => {
-    expect(modeRow(room(), "quiz", NOW)).toEqual({ kind: "quiz", label: "开", does: "open" });
-    expect(modeRow(room({ mode: quiz({ in: [{ h: 2, combo: 0 }], by: 2 }) }), "quiz", NOW)).toEqual({ kind: "quiz", label: "正在玩 · 加入", does: "join" });
+  it("is a match of 玩点什么: 发起 while nothing plays, 下一局 to one not in a round of it", () => {
+    expect(modeRow(room(), "quiz", NOW)).toEqual({ kind: "quiz", label: "发起", does: "open" });
+    expect(modeRow(room({ mode: quiz({ in: [{ h: 2, combo: 0 }], by: 2 }) }), "quiz", NOW)).toEqual({ kind: "quiz", label: "下一局", does: "next", tag: "下一局" });
     expect(modeRow(room({ mode: quiz() }), "dance", NOW).does).toBeNull();
   });
 });
@@ -324,22 +318,31 @@ describe("the quiz on the page", () => {
     expect(squadQuizPicksNow()?.picks[1]).toBeUndefined();
     res = { status: 200, json: { right: false, first: false, answer: 2, now: m.questions[1].at + 300 } };
     expect(await squadQuizAnswer(1, 0)).toMatchObject({ right: false, answer: 2 });
-    // as judged, for this quiz
+    // as judged, for this round
     expect(squadQuizPicksNow()).toEqual({
-      at: m.at,
+      at: m.begun,
       picks: { 0: { pick: 1, right: true, first: true, answer: 1 }, 1: { pick: 0, right: false, first: false, answer: 2 } },
-      joinedAt: null,
     });
   });
 
-  it("notes when you joined a quiz, so the question then is left to the next", async () => {
+  it("keeps your answers by round: the next round of the same match starts with none", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(NOW + 1_500);
-    const m = quiz({ in: [{ h: 2, combo: 0 }], by: 2 });
-    const sent = server(room({ mode: m, now: NOW + 1_500 }), () => ({ status: 200, json: {} }));
+    vi.setSystemTime(NOW + 1_000);
+    const m = quiz();
+    server(room({ mode: m, now: NOW + 1_000 }), () => ({ status: 200, json: { right: true, first: true, answer: 1, now: NOW + 1_000 } }));
     await loadSquadRoom();
-    await squadModeIn(true);
-    expect(sent.some((s) => s.url === "/api/squad/modein" && s.body.in === true)).toBe(true);
-    expect(squadQuizPicksNow()).toEqual({ at: m.at, picks: {}, joinedAt: NOW + 1_500 });
+    await squadQuizAnswer(0, 1);
+    expect(squadQuizPicksNow()?.at).toBe(m.begun);
+    // the next round, begun later from the same start: its question 0 is new to you
+    const later = m.until + 10_000;
+    const m2 = quiz({ at: m.at, begun: later, played: 1 });
+    vi.setSystemTime(later + 1_000);
+    server(room({ mode: { ...m2, questions: m2.questions.map((q) => ({ ...q, at: q.at - m.at + later, ends: q.ends - m.at + later })) }, now: later + 1_000 }), () => ({
+      status: 200,
+      json: { right: false, first: false, answer: 0, now: later + 1_000 },
+    }));
+    await loadSquadRoom();
+    expect(await squadQuizAnswer(0, 2)).toMatchObject({ right: false });
+    expect(squadQuizPicksNow()).toEqual({ at: later, picks: { 0: { pick: 2, right: false, first: false, answer: 0 } } });
   });
 });

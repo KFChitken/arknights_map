@@ -557,3 +557,53 @@
   .sq-race .racer .rr, .sq-race .racer .zoom, .sq-race .racer .crown, .sq-race .tip, .sq-race .van .stamp { animation: none; }
   .sq-stack .tw.sway, .sq-stack .blk.drop, .sq-stack .smsg { animation: none; }
 }
+/* ---- a match waiting for people (SquadLobby.tsx), as the canvas 「房主开局」 has it ---- */
+.sq-lobby {
+  position: fixed; z-index: 34; left: 50%; bottom: 0; width: min(420px, 100%); max-height: calc(100% - 56px - var(--safe-top, 0px)); overflow-y: auto; transform: translateX(-50%);
+  padding: 10px 12px calc(14px + var(--safe-bottom, 0px)); box-sizing: border-box; border-radius: 18px 18px 0 0; background: #fff; color: #1b1d22;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.14); -webkit-tap-highlight-color: transparent;
+}
+@media (min-width: 720px) {
+  .sq-lobby { bottom: 16px; border-radius: 18px; padding-bottom: 14px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3); }
+}
+.sq-lobby header { display: flex; align-items: center; gap: 8px; padding: 0 2px 8px; }
+.sq-lobby header b { min-width: 0; overflow: hidden; padding: 2px 10px; border-radius: 999px; background: #fff3c4; color: #7a5a00; font-size: 12.5px; white-space: nowrap; text-overflow: ellipsis; }
+.sq-lobby header .x {
+  margin-left: auto; flex: none; width: 32px; height: 32px; border: 0; border-radius: 10px; background: #f1f2f4; color: #4b5160; font-size: 20px; line-height: 1; cursor: pointer;
+}
+.sq-lobby .lpanel { padding: 12px 12px 14px; border: 1px solid #f2e2a0; border-radius: 16px; background: linear-gradient(180deg, #fff8dc 0%, #fff3c4 100%); }
+.sq-lobby .lhead { display: flex; align-items: center; gap: 10px; }
+.sq-lobby .lhead .ic { flex: none; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 13px; background: #fff; }
+.sq-lobby .lhead .ic .pg-ico { width: 34px; height: 34px; }
+.sq-lobby .lhead b { flex: 1; min-width: 0; font-size: 15.5px; }
+.sq-lobby .lhead em { flex: none; padding: 2px 8px; border-radius: 999px; background: #1b1d22; color: #ffd23f; font-size: 11.5px; font-style: normal; font-weight: 800; }
+.sq-lobby .lseats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-top: 12px; }
+.sq-lobby .lseat {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; padding: 9px 2px 8px; box-sizing: border-box; border: 1px solid #f0e3b0; border-radius: 13px; background: #fff;
+}
+.sq-lobby .lseat.you { border: 2px solid #1b1d22; }
+.sq-lobby .lseat.empty { border: 1.5px dashed #d8cc9c; background: rgba(255, 255, 255, 0.45); }
+.sq-lobby .lseat .rw { height: 46px; display: grid; place-items: center; line-height: 0; }
+.sq-lobby .lseat .hole { height: 46px; display: grid; place-items: center; color: #c2b98f; font-size: 22px; font-weight: 900; }
+.sq-lobby .lseat b { max-width: 100%; overflow: hidden; color: #3b3f47; font-size: 11.5px; white-space: nowrap; text-overflow: ellipsis; }
+.sq-lobby .lseat.you b { color: #1b1d22; }
+.sq-lobby .lseat.empty b { color: #9a8f63; }
+.sq-lobby .lseat small { max-width: 100%; overflow: hidden; padding: 1px 6px; box-sizing: border-box; border-radius: 999px; background: #2fa36b; color: #fff; font-size: 10px; font-weight: 800; white-space: nowrap; text-overflow: ellipsis; }
+.sq-lobby .lseat.first small { background: #1b1d22; color: #ffd23f; }
+.sq-lobby .lseat.bot small, .sq-lobby .lseat.empty small { background: #f1ead0; color: #8a7d4a; }
+.sq-lobby .lacts { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.sq-lobby .lacts .main {
+  height: 56px; border: 0; border-radius: 14px; background: #ffd23f; color: #1b1d22; font: inherit; font-size: 16.5px; font-weight: 900; cursor: pointer; touch-action: manipulation;
+}
+.sq-lobby .lacts .main.wait { background: #e3e5e8; color: #6b7280; font-size: 14.5px; cursor: default; }
+.sq-lobby .lacts .main:disabled:not(.wait) { opacity: 0.6; cursor: default; }
+.sq-lobby .lacts .two { display: flex; gap: 8px; }
+.sq-lobby .lacts .two button {
+  flex: 1; height: 40px; border: 1px solid #e3e5e8; border-radius: 12px; background: #fff; color: #1b1d22; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
+}
+.sq-lobby .lacts .two .out { color: #4b5160; font-weight: 400; }
+.sq-lobby .lacts .two button:disabled { opacity: 0.6; cursor: default; }
+.sq-lobby .lsmall { color: #4b5160; font-size: 12px; line-height: 1.5; text-align: center; }
+.sq-lobby .lmsg { margin: 8px 2px 0; color: #b42318; font-size: 12.5px; text-align: center; }
+.sq-lobby .lmsg.ok { color: #4b5160; }
+.sq-lobby .note { margin: 12px 2px 0; padding: 10px 12px; border-radius: 12px; background: #f6f7f9; color: #4b5160; font-size: 11.5px; line-height: 1.65; }

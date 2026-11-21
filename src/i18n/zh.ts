@@ -750,6 +750,11 @@ export const zh = {
       notRacing: "先加入才能跑。",
       raceIn: "你已经到了。",
       inAir: "还在空中。",
+      /** A match's 开始 (only its initiator, only while it waits), a round's late comer, 喊一声 with no match */
+      notInitiator: "只有发起人能点开始。",
+      begunAlready: "已经开始了。",
+      notThisRound: "这局开始以后才进来的，下一局再答。",
+      noMatch: "现在没有在等人的小游戏。",
       notStacking: "先加入才能放。",
       stackFell: "塔已经塌了，点「再来一轮」接着搭。",
       stackStanding: "这一轮还没塌，接着放吧。",
@@ -2437,7 +2442,7 @@ export const zh = {
       endNo: "算了",
     },
     say: {
-      rows: { team: "组队", open: "开局", fight: "局内", after: "打完", music: "听歌", to: "对 TA 说" },
+      rows: { team: "组队", open: "开局", fight: "局内", after: "打完", music: "听歌", to: "对 TA 说", game: "喊一声" },
       /** The set lines, by number from 1 (src/lib/squad.ts PHRASE_ROWS) */
       lines: [
         "我进同盟了",
@@ -2483,7 +2488,11 @@ export const zh = {
         "好，我换",
         "不换啦，你换一个？",
         "好嘞",
+        "来玩小游戏，差你一个！",
+        "来一起玩？",
       ],
+      /** 44 (喊一声 from a match's card) as the match waiting or playing has it; lines[43] once it is gone */
+      shout: { quiz: "来答凯尔希随堂测，差你一个！", gift: "来传 W 的礼物，差你一个！", race: "来跑急件赛，差你一个！" },
       slow: "说得太快了，歇几秒",
       enough: "这一小时说得够多了",
       /** Over the line's bubble, a line said to one (对 TA 说) */
@@ -2709,6 +2718,15 @@ export const zh = {
       youHost: "房主走了，你成了房主",
       /** One you asked (能换个策略吗？, 能把「…」让给我吗？) changed TA's strategy within a minute */
       freed: "{name} 换了，「{s}」空出来了",
+      /** A match (玩点什么): picked, readied, started (急件赛: 开跑), handed on, gone with nobody ready or doing anything */
+      matchOpen: "{name} 发起了{mode}",
+      matchReady: "{name} 准备好了 · {mode}",
+      matchStartRun: "{name} 点了开始，3 秒后开跑",
+      matchStart: "{name} 点了开始，3 秒后开始",
+      hand: "{a} 走了，{b} 成了发起人",
+      handYou: "{a} 走了，你成了发起人",
+      matchGone: "没人准备，{mode}散了",
+      matchIdle: "{mode}等了 3 分钟没开，散了",
     },
     /** The room ended: why, to everyone in it */
     ended: {
@@ -2876,9 +2894,14 @@ export const zh = {
     modes: {
       /** What a mode's tile in 「玩」 does now (src/components/app/squad/SquadPlays.tsx), said when it cannot */
       open: "开",
+      /** A match's: picked first (you its initiator) */
+      pick: "发起",
       join: "正在玩 · 加入",
       in: "在玩 · 打开",
-      wait: "等这局完",
+      wait: "等{mode}这局完（一次只能玩一个）",
+      /** A match's tile while it waits ({n} ready of 4), and while a round plays to one not in it */
+      waitTag: "等人 {n}/4",
+      nextTag: "下一局",
       names: { dance: "龙门广场舞", quiz: "凯尔希随堂测", gift: "W 的礼物", race: "企鹅物流急件赛", stack: "基建加盖" },
       /** On a tile of the room, for one in it */
       tileTags: { dance: "在跳", quiz: "在答", gift: "在传", race: "在跑", stack: "在搭" },
@@ -2887,21 +2910,69 @@ export const zh = {
       /** To one in the room not in it: a line at the top ({mode} its name, in bold) */
       invites: {
         dance: "{name} 开了{mode}（{n} 人在跳），加入？",
-        quiz: "{name} 开了{mode}（{n} 人在答），加入？",
-        gift: "{name} 开了{mode}（{n} 人在传），加入？",
-        race: "{name} 开了{mode}（{n} 人在跑），加入？",
         stack: "{name} 开了{mode}（{n} 人在搭），加入？",
       },
       invitesNoBy: {
         dance: "{mode}正在跳（{n} 人），加入？",
-        quiz: "{mode}正在答（{n} 人），加入？",
-        gift: "{mode}正在传（{n} 人），加入？",
-        race: "{mode}正在跑（{n} 人），加入？",
         stack: "{mode}正在搭（{n} 人），加入？",
       },
+      /** A match waiting, to one not ready ({name} its initiator, {n} ready of 4); NoBy while TA is not in the room */
+      waitInvites: "{name} 想玩{mode}（{n}/4 准备了），来吗？",
+      waitInvitesNoBy: "{mode}在等人（{n}/4 准备了），来吗？",
+      /** A match's round playing, to one not in it nor in the next ({n} playing) */
+      nextInvites: {
+        quiz: "{name} 发起的{mode}正在答（{n} 人），下一局来吗？",
+        gift: "{name} 发起的{mode}正在传（{n} 人），下一局来吗？",
+        race: "{name} 发起的{mode}正在跑（{n} 人），下一局来吗？",
+      },
+      nextInvitesNoBy: {
+        quiz: "{mode}正在答（{n} 人），下一局来吗？",
+        gift: "{mode}正在传（{n} 人），下一局来吗？",
+        race: "{mode}正在跑（{n} 人），下一局来吗？",
+      },
       inviteJoin: "加入",
+      inviteReady: "准备",
+      inviteNext: "下一局算我",
       inviteNo: "不了",
       inviteNoLabel: "不加入{mode}",
+      /** On a room's tile, one ready for a match waiting */
+      readyTag: "等开局",
+    },
+    /**
+     * A match's card while it waits for people (src/components/app/squad/SquadLobby.tsx): its title, the four seats,
+     * its buttons ({n} people, {m} 人机), one coming in after a round's start, the small lines, the note (with 人机 and
+     * the quiz's, without), the small window's strip
+     */
+    lobby: {
+      title: "{mode} · 等人",
+      close: "收起",
+      initiator: "发起人",
+      ready: "准备好了",
+      empty: "空位",
+      emptyRun: "空位 · 开跑时人机来",
+      emptyStart: "空位 · 开始时人机来",
+      botRun: "人机来跑",
+      botPass: "人机来传",
+      start: "开始 · {n} 人 + {m} 个人机",
+      startPeople: "开始 · {n} 人",
+      solo: "开始 · 自己练（{m} 个人机陪跑）",
+      soloQuiz: "开始 · 自己练",
+      again: "再来一局 · {n} 人",
+      readyUp: "准备",
+      shout: "喊一声",
+      out: "不玩了",
+      waiting: "准备好了 · 等发起人开始",
+      waitingAgain: "还在 · 等发起人点『再来一局』",
+      late: "这局先围观 · 下一局算我",
+      queued: "排进下一局了：这局跑完你就在里面",
+      soloNote: "人没齐也能开，空位人机来跑",
+      outNote: "取消了准备：你还在房间里，只是这局不玩",
+      note: "第一个点的人是这局的发起人。别人点『准备』进来，发起人点『开始』才开，3 秒倒数。人没齐也能开，空位人机来跑；一个人开就是自己练。开始以后进来的这局先围观，下一局一起。玩完大家还在，发起人点『再来一局』接着玩。3 分钟没人动就散。",
+      noteQuiz: "第一个点的人是这局的发起人。别人点『准备』进来，发起人点『开始』才开，3 秒倒数。人没齐也能开，一个人开就是自己练。开始以后进来的这局先围观，下一局一起。玩完大家还在，发起人点『再来一局』接着玩。3 分钟没人动就散。",
+      strip: "{mode} · 等人 {n}/4",
+      stripStart: "开始",
+      stripReady: "准备",
+      stripNext: "下一局算我",
     },
     /** 「玩」's tiles (src/components/app/squad/SquadPlays.tsx): every game there is, its icon and its name */
     plays: {
@@ -2913,8 +2984,9 @@ export const zh = {
       /** On a mode's tile: you in it, or it playing (join) */
       in: "在玩",
       join: "加入",
-      /** Under the tiles while a mode plays */
+      /** Under the tiles while a mode plays, or a match waits ({n} ready of 4) */
       playing: "正在玩：{mode}（{n} 人）· 一次只能玩一个",
+      waiting: "正在等人：{mode}（{n}/4 准备了）· 一次只能玩一个",
     },
     /** 龙门广场舞 (src/components/app/squad/SquadDance.tsx), a mode of 玩点什么 */
     dance: {
@@ -2987,9 +3059,6 @@ export const zh = {
       rate: "加油每秒最多算 6 下",
       jump: "跳",
       cheer: "加油！",
-      join: "下一场加入",
-      queued: "下一场开跑时你就在里面",
-      watching: "你在围观这一场，加入以后下一场开跑时就在里面",
       leave: "不跑了，去围观",
       results: "这一场",
       place: "第 {n}",
@@ -2997,7 +3066,6 @@ export const zh = {
       notIn: "没跑完 · {m} m",
       crown: "小冠",
       practice: "一个人自己练，不戴小冠",
-      again: "再来一场",
       note: "每只蟑螂背一个企鹅物流的快递，在龙门街上跑 300 米，先送到大帝手里的赢。镜头跟着你走，前面有什么要跑近了才看到；上面那条只画四个人在哪。狂点「加油」跑得快（每秒最多算 6 下）；看到白开水、源石虫、近卫局路障就点「跳」，理智顶液别跳，吃到冲一下。空道人机来跑，最多 30 秒；第一个签收的头上小冠 1 分钟，1 个人时是自己练。",
       close: "关上急件赛",
     },
@@ -3094,9 +3162,7 @@ export const zh = {
       hits: "被炸 {n} 次",
       none: "一次没被炸",
       practice: "一个人自己练，不扣漏勺",
-      join: "下一轮加入",
       joining: "下一轮坐进来",
-      watching: "你在围观，加入以后下一轮坐进来",
       leave: "不玩了，去围观",
       note: "W 的礼物（引线在烧的礼物盒）在一圈 4 个座位之间传，轮到你就点「传」，2 秒不传会自动传。鼓点跟着歌走：房主开着一起听就是那首，没开就从听歌里挑一首方舟歌。歌一停，礼物「砰」一声，拿着的蟑螂翻肚皮、头上扣漏勺 1 分钟。人不够人机来凑，一局 5 轮；1 个人时是自己练，不扣漏勺。",
       close: "关上 W 的礼物",
@@ -3135,9 +3201,6 @@ export const zh = {
       and: "、",
       tied: "同分，谁都不扣漏勺",
       practice: "一个人自己练，不扣漏勺",
-      join: "下一题加入",
-      joining: "下一题开始答",
-      watching: "你在围观，加入以后从下一题开始答",
       leave: "不答了，去围观",
       note: "三选一，3 秒（前奏 6 秒）。先答对的拿分，5 题一局，最后一名头上扣漏勺 1 分钟。剪影和局部从寻访那些干员的立绘自动出题，前奏从听歌的歌单出。1 个人时是自己练，不扣漏勺。",
       close: "关上随堂测",

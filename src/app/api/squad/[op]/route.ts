@@ -32,7 +32,7 @@ import {
 import { squadOpen } from "@/lib/server/squadOpen";
 import { fireBoard } from "@/lib/server/fireBoard";
 import { answerQuiz, askQuestion } from "@/lib/server/squadQuiz";
-import { danceSong, danceTap, joinMode, openMode, passGift, runRace, stackDo } from "@/lib/server/squadModes";
+import { danceSong, danceTap, joinMode, openMode, passGift, runRace, stackDo, startMatch } from "@/lib/server/squadModes";
 import { addWood, hitBack, shakeOff, throwAt } from "@/lib/server/squadPlay";
 import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
 
@@ -68,8 +68,11 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST throw {to, item}         扔: one of the things (src/lib/squadFire.ts THROWS, by number) at the one numbered to
  *   POST hit                      打回去: the ball on your tile sent back to whoever sent it
  *   POST shake                    甩掉: what crawled onto your roach's head (源石虫) off it
- *   POST mode {kind}              玩点什么: open a mode (src/lib/server/squadModes.ts; dance, 龙门广场舞), none playing
- *   POST modein {in}              加入 the mode playing (in), or 不跳了，去围观 (in false)
+ *   POST mode {kind}              玩点什么: open a mode (src/lib/server/squadModes.ts), none playing; a match (quiz, gift,
+ *                                 race) waits for people, the opener its initiator
+ *   POST modein {in}              加入 the mode playing (in), or 不跳了，去围观 (in false); a match waiting: 准备 or 不玩了;
+ *                                 a round playing: 下一局算我 (in) or out to watch it
+ *   POST start                    开始: a match's initiator starts a round with those ready
  *   POST tap {at?}                跳: a tap in 龙门广场舞, at the server's clock as the page has it
  *   POST song                     龙门广场舞's song: its beats, and its link to one 听歌 is open to
  *   POST fireboard {week}         火焰周榜 (src/lib/server/fireBoard.ts): this week's or last week's, and your room on it
@@ -117,6 +120,7 @@ const OPS = {
   shake: { method: "POST", perMinute: 20 },
   mode: { method: "POST", perMinute: 10 },
   modein: { method: "POST", perMinute: 20 },
+  start: { method: "POST", perMinute: 10 },
   tap: { method: "POST", perMinute: 400 },
   song: { method: "POST", perMinute: 20 },
   fireboard: { method: "POST", perMinute: 30 },
@@ -147,6 +151,7 @@ const TALKING: ReadonlySet<Op> = new Set<Op>([
   "hit",
   "mode",
   "modein",
+  "start",
   "tap",
   "answer",
   "pass",
@@ -233,6 +238,8 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await openMode(user, body));
     case "modein":
       return answer(await joinMode(user, body));
+    case "start":
+      return answer(await startMatch(user));
     case "tap":
       return answer(await danceTap(user, body));
     case "song":

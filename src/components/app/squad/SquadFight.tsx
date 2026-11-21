@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { fmt, T } from "@/i18n";
 import { serverName } from "@/lib/games";
-import { SQUAD_MAX, type SquadMember, type SquadMove, type SquadRoom } from "@/lib/squad";
+import { SQUAD_MAX, TO, type SquadMember, type SquadMove, type SquadRoom } from "@/lib/squad";
 import { shakes } from "@/lib/squadFire";
 import { ShieldIcon } from "../chrome/parts";
 import { useOperatorArt } from "../OperatorNames";
@@ -25,6 +25,7 @@ import {
   squadShakeOff,
   sayInSquad,
   squadBot,
+  squadServerNow,
   setSquadPickNext,
   setSquadSceneOn,
   useSquadLines,
@@ -41,6 +42,7 @@ import {
 } from "./squading";
 import { dockFolded, keepDockFolded, readyOf, tabAtRound, tileTap, type DockTab } from "./dockState";
 import SquadToMe from "./SquadToMe";
+import { mayCall } from "./SquadModeInvite";
 import { setSquadMuted, squadSoundReady, useSquadMuted } from "./squadSound";
 import "./squadFight.css";
 
@@ -477,6 +479,7 @@ export default function SquadFight({
           style={peek.at}
           me={room.members.find((x) => x.you)}
           onSay={waiting ? (p) => sayTo(p, peekOf.h) : undefined}
+          onCall={mayCall(room, peekOf.h, squadServerNow()) ? () => sayTo(TO.play, peekOf.h) : undefined}
           onTouch={(bold) => onTouch(peekOf.h, bold)}
           onKick={() => (setPeek(null), void act(() => kickFromSquad(peekOf.h)))}
           onSafety={() => (setPeek(null), onSafety(`sq:${room.id}:${peekOf.h}`, peekOf.name))}

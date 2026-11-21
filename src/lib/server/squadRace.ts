@@ -25,7 +25,7 @@ import { modeBots, roomBotsOf } from "./squadGift";
  * as it opens and kept on the room (squad_rooms.mode_data) with what each player did, 加油 counts and 跳s (runIn,
  * checked on the server's clock), from which the same rule (raceRun) the pages draw by says where everyone is. Once
  * all are in or its time is up, the order is settled here, the first wears a small crown, and it ends a little later
- * (settleRace). squadModes.ts opens it, takes players in and out, and ends it.
+ * (settleRace). squadModes.ts starts it, takes players out, and ends it.
  */
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -34,11 +34,11 @@ const refuse = (status: number, message: string, code?: string) => new HttpError
 const CROWN = THROWS.find((t) => t.key === "crown")!.no;
 
 /**
- * 企鹅物流急件赛 as it opens (now): its lanes (its opener, those who asked for the next race as they asked, the room's
- * 人机, then the mode's own), its seed and obstacles, its start RACE_LEAD_MS on
+ * 企鹅物流急件赛 as its initiator starts it (now): its lanes (those ready: its initiator, then as they readied; the
+ * room's 人机, then the mode's own), its seed and obstacles, its start RACE_LEAD_MS on
  */
-export async function makeRace(roomId: string, players: readonly number[], now: number, rand: (n: number) => number): Promise<RaceData> {
-  const roomBots = await roomBotsOf(db, roomId);
+export async function makeRace(exec: Tx | typeof db, roomId: string, players: readonly number[], now: number, rand: (n: number) => number): Promise<RaceData> {
+  const roomBots = await roomBotsOf(exec, roomId);
   const bots = modeBots(roomBots, rand);
   const hs = [...players.slice(0, GIFT_SEATS), ...roomBots.map((b) => b.h)].slice(0, GIFT_SEATS);
   for (const b of bots) if (hs.length < GIFT_SEATS) hs.push(b.h);
@@ -50,26 +50,18 @@ export async function makeRace(roomId: string, players: readonly number[], now: 
 export const raceLatest = (start: number) => start + RACE_MAX_MS + RACE_RESULT_MS;
 
 /**
- * Before it starts, one coming in or going out (a player of the room): a lane of the mode's own 人机 theirs, or theirs
- * one of those again. Says whether it changed. Once it has started, nothing: one coming in runs the next one.
+ * Before it starts, one going out to watch (a player of the room): their lane one of the mode's own 人机's. Says
+ * whether it changed. Once it has started, nothing (their lane stops where it is); one coming in runs the next one.
  */
-export function relaneRace(data: RaceData, h: number, into: boolean, now: number): boolean {
+export function relaneRace(data: RaceData, h: number, now: number): boolean {
   if (now >= data.start) return false;
   const lanes = data.lanes;
   const i = lanes.findIndex((l) => l.h === h);
-  if (into && i < 0) {
-    const free = lanes.findIndex((l) => data.bots.some((b) => b.h === l.h));
-    if (free < 0) return false;
-    lanes[free] = { h, taps: [], jumps: [] };
-    return true;
-  }
-  if (!into && i >= 0) {
-    const bot = data.bots.find((b) => !lanes.some((l) => l.h === b.h));
-    if (!bot) return false;
-    lanes[i] = { h: bot.h, taps: [], jumps: [] };
-    return true;
-  }
-  return false;
+  if (i < 0) return false;
+  const bot = data.bots.find((b) => !lanes.some((l) => l.h === b.h));
+  if (!bot) return false;
+  lanes[i] = { h: bot.h, taps: [], jumps: [] };
+  return true;
 }
 
 /** What a player did, as the room is told: their 加油 count ([when, how many]) or 跳 (when) */

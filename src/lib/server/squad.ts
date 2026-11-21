@@ -10,7 +10,7 @@ import { beijingDate } from "../beijing";
 import { siteDay, siteDayStart } from "../siteDay";
 import { FIREWATCH, FIREWATCH_DAYS } from "../badges";
 import { fireEnd, playOn } from "../squadFire";
-import { modeEnds, type GiftData, type QuizData, type RaceData, type SquadMode, type StackData } from "../squadMode";
+import { inRound, isLobbyData, isMatchKind, modeEnds, type GiftData, type MatchRound, type QuizData, type RaceData, type SquadMode, type StackData } from "../squadMode";
 import {
   BOT_EXTRAS_MAX,
   BOT_SAY_EVERY_MS,
@@ -66,6 +66,7 @@ import {
   STRATEGY_LOCKED,
   STRATEGY_TAKEN,
   TO,
+  isMatchCall,
   isToPhrase,
   TAGS_MAX,
   WAIT_IDLE_MS,
@@ -107,6 +108,7 @@ import { fishDays, fishLines, roaches, squadBots, squadInvites, squadMembers, sq
 import { grayUntil, listenSettings, squadSettings } from "./siteSettings";
 import { songOf } from "./songs";
 import { giftShownUntil, giftView } from "./squadGift";
+import { handLobby, lobbyTell, type LobbyNews } from "./squadLobby";
 import { stackView } from "./squadStack";
 import { quizView } from "./squadQuiz";
 import { squadOpen, squadShown } from "./squadOpen";
@@ -533,23 +535,39 @@ async function fireWatchers(ids: string[], now: number) {
 /**
  * 玩点什么's mode as the room's pages have it (src/lib/squadMode.ts), while it plays (one over is cleared by the next
  * request to it, or the sweep: src/lib/server/squadModes.ts); those in it in their numbers' order; 基建加盖's hand the
- * viewer's (numbered `viewer`)
+ * viewer's (numbered `viewer`). A match waiting: those ready, its initiator first, then as they readied; a round
+ * playing: those in it, and those who asked for the next (next) as they asked.
  */
 async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof squadMembers.$inferSelect }[], viewer: number, now: number): Promise<SquadMode | null> {
   if (!room.mode || !room.modeAt || !room.modeUntil || !room.modeLast) return null;
   const endsAt = modeEnds(room.mode, room.modeUntil.getTime(), room.modeLast.getTime());
   if (endsAt <= now) return null;
+  const by = room.modeBy ?? 0;
+  const tapAt = (r: { m: typeof squadMembers.$inferSelect }) => r.m.modeTapAt?.getTime() ?? 0;
+  const ready = rows.filter((r) => r.m.modeIn);
+  const ends = { endsAt, until: room.modeUntil.getTime() };
+  if (isMatchKind(room.mode) && isLobbyData(room.modeData)) {
+    const first = [...ready].sort((a, b) => Number(b.m.handle === by) - Number(a.m.handle === by) || tapAt(a) - tapAt(b) || a.m.handle - b.m.handle);
+    return { kind: room.mode, wait: true, by, at: room.modeAt.getTime(), in: first.map((r) => ({ h: r.m.handle, combo: 0 })), played: room.modeData.played, ...ends };
+  }
+  const round = isMatchKind(room.mode) ? (room.modeData as Partial<MatchRound> | null) : null;
+  const begun = round?.begun ?? room.modeAt.getTime();
+  const playing = round ? ready.filter((r) => inRound(r.m.modeTapAt?.getTime() ?? null, begun)) : ready;
   const base = {
-    by: room.modeBy ?? 0,
+    by,
     at: room.modeAt.getTime(),
-    in: rows
-      .filter((r) => r.m.modeIn)
-      .sort((a, b) => a.m.handle - b.m.handle)
-      .map((r) => ({ h: r.m.handle, combo: r.m.modeCombo })),
-    endsAt,
-    until: room.modeUntil.getTime(),
+    in: [...playing].sort((a, b) => a.m.handle - b.m.handle).map((r) => ({ h: r.m.handle, combo: r.m.modeCombo })),
+    ...ends,
   };
-  if (room.mode === "quiz" && room.modeData) return { kind: "quiz", ...base, questions: await quizView(room.modeData as QuizData, now) };
+  const match = {
+    begun,
+    played: round?.played ?? 0,
+    next: ready
+      .filter((r) => !playing.includes(r))
+      .sort((a, b) => tapAt(a) - tapAt(b) || a.m.handle - b.m.handle)
+      .map((r) => r.m.handle),
+  };
+  if (room.mode === "quiz" && room.modeData) return { kind: "quiz", ...base, ...match, questions: await quizView(room.modeData as QuizData, now) };
   if (room.mode === "gift" && room.modeData && room.modeSong && room.modeSongAt) {
     // its last round's stop not given away by its end
     const data = room.modeData as GiftData;
@@ -557,6 +575,7 @@ async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof 
     return {
       kind: "gift",
       ...base,
+      ...match,
       endsAt: until,
       until,
       song: room.modeSong,
@@ -572,6 +591,7 @@ async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof 
     return {
       kind: "race",
       ...base,
+      ...match,
       start: data.start,
       seed: data.seed,
       lanes: data.lanes.map((l) => ({ h: l.h, taps: [...l.taps], jumps: [...l.jumps] })),
@@ -645,26 +665,30 @@ export async function saveCard(user: Pick<UserRow, "id">, body: Record<string, u
 // ---- in and out ----
 
 /** What leaving the room you are in made of it, told once the change is written */
-type Left = { roomId: string; ended: string[] | null } | null;
+/** One out of a room: the room, everyone who was in it when it ended with them, what became of its match (玩点什么) */
+type Left = { roomId: string; ended: string[] | null; lobby?: LobbyNews | null } | null;
 
 /** Out of the room you are in, if any: the host's ends with them, anyone else's goes on without them */
 async function leaveIn(tx: Exec, userId: string, now: number): Promise<Left> {
   const mine = await roomOf(tx, userId);
   if (!mine) return null;
   if (mine.room.hostId === userId) return { roomId: mine.room.id, ended: await endIn(tx, mine.room.id, "host", now) };
+  // the room first, as its modes take it before their members
+  await tx.select({ id: squadRooms.id }).from(squadRooms).where(eq(squadRooms.id, mine.room.id)).for("update");
   await tx
     .update(squadMembers)
     .set({ leftAt: new Date(now) })
     .where(and(eq(squadMembers.roomId, mine.room.id), eq(squadMembers.userId, userId)));
   await tx.update(squadRooms).set({ movedAt: new Date(now) }).where(eq(squadRooms.id, mine.room.id));
-  return { roomId: mine.room.id, ended: null };
+  // a match they started handed on, or gone with nobody ready
+  return { roomId: mine.room.id, ended: null, lobby: await handLobby(tx, mine.room.id) };
 }
 
 async function told(left: Left) {
   if (!left) return;
   forgetList();
   if (left.ended) return tellEnd(left.roomId, left.ended, "host");
-  await tellRoom(left.roomId);
+  await tellRoom(left.roomId, left.lobby ? lobbyTell(left.lobby) : undefined);
 }
 
 /** The room over, everyone in it out; says who was in it (null: it was over already) */
@@ -894,10 +918,12 @@ async function handOver(user: Pick<UserRow, "id">, to: unknown, now: number) {
       .update(squadMembers)
       .set({ leftAt: at })
       .where(and(eq(squadMembers.roomId, roomId), eq(squadMembers.userId, user.id)));
-    return them.handle;
+    // a match the old host started handed on, or gone with nobody ready
+    return { h: them.handle, lobby: await handLobby(tx, roomId) };
   });
   forgetList();
-  await tellRoom(roomId, { kind: "host", h: handed });
+  await tellRoom(roomId, { kind: "host", h: handed.h });
+  if (handed.lobby) await tellRoom(roomId, lobbyTell(handed.lobby));
   return { now };
 }
 
@@ -1095,15 +1121,16 @@ async function kickIn(roomId: string, hostId: string, h: number, now: number) {
       return null;
     }
     await tx.update(squadRooms).set({ movedAt: new Date(now) }).where(eq(squadRooms.id, roomId));
-    return them.userId;
+    // a match they started handed on, or gone with nobody ready
+    return { userId: them.userId, lobby: await handLobby(tx, roomId) };
   });
   if (!gone) return null;
-  await kickFromHostListen(hostId, gone, now).catch((e) => console.error("squad: asking someone out of the host's 一起听 failed", e));
+  await kickFromHostListen(hostId, gone.userId, now).catch((e) => console.error("squad: asking someone out of the host's 一起听 failed", e));
   forgetList();
   const tell: SquadTell = { t: "you", room: roomId, why: "kicked" };
-  tellSquad([gone], tell);
-  await tellRoom(roomId);
-  return gone;
+  tellSquad([gone.userId], tell);
+  await tellRoom(roomId, gone.lobby ? lobbyTell(gone.lobby) : undefined);
+  return gone.userId;
 }
 
 /**
@@ -1702,9 +1729,16 @@ export async function sayInRoom(user: Pick<UserRow, "id">, body: Record<string, 
   const to = body.to === undefined ? null : (handleOf(body.to) ?? (isBotHandle(body.to) ? body.to : null));
   if (body.to !== undefined && to === null) throw refuse(400, T.server.common.badRequest);
   // to one in the room, never yourself: a 人机 (withBot) or a member (memberAt)
+  // 来一起玩？ to a player alone (a 人机 never plays a match)
+  if (p === TO.play && to !== null && to < 0) throw refuse(400, T.server.common.badRequest);
   const mine = to === null ? await roomOf(db, user.id) : to < 0 ? await withBot(user.id, to) : (await memberAt(user.id, to)).mine;
   if (!mine) throw refuse(409, T.server.squad.notInRoom, NOT_IN_ROOM);
-  if (to !== null && mine.room.state !== "wait") throw refuse(409, T.server.squad.toPlaying, ROOM_PLAYING);
+  // 喊一声 and 来一起玩？ only while a match waits or plays (the room playing or not); the rest of 对 TA 说 while it waits
+  if (isMatchCall(p)) {
+    const [room] = await db.select().from(squadRooms).where(eq(squadRooms.id, mine.room.id));
+    const ends = room?.mode && room.modeUntil && room.modeLast ? modeEnds(room.mode, room.modeUntil.getTime(), room.modeLast.getTime()) : null;
+    if (!room || !isMatchKind(room.mode) || ends === null || ends <= now) throw refuse(409, T.server.squad.noMatch);
+  } else if (to !== null && mine.room.state !== "wait") throw refuse(409, T.server.squad.toPlaying, ROOM_PLAYING);
   if (!allow(`squad:sayEvery:${user.id}`, 1, SAY_EVERY_MS)) return { sent: false, now };
   if (!allow(`squad:sayHour:${user.id}`, SAY_PER_HOUR, HOUR)) return { sent: false, full: true, now };
   addSay(mine.room.id, mine.me.handle, p, to ?? undefined);

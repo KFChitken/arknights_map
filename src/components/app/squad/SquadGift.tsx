@@ -145,6 +145,7 @@ export function GiftView({
   onPass: () => void;
   /** 传 clicked: by a key (detail 0), a pass of its own; else after the finger's, where the music may start */
   onPassClick: (byKey: boolean) => void;
+  /** 下一局算我: one not in this round asks for the next */
   onJoin: () => void;
   onMusic: () => void;
   onLeave: () => void;
@@ -152,6 +153,7 @@ export function GiftView({
   const t = T.squad.gift;
   const phase = giftPhase(mode, now);
   const me = mode.in.some((m) => m.h === room.you);
+  const queued = !me && mode.next.includes(room.you);
   const r = phase.at === "results" ? mode.rounds.length - 1 : phase.r;
   const round = mode.rounds[r];
   const mine = round ? round.seats.indexOf(room.you) : -1;
@@ -169,7 +171,8 @@ export function GiftView({
   const mw = musicWords(music);
   let button: { text: string; on: boolean; join?: boolean } | null = null;
   if (phase.at !== "results") {
-    if (!me) button = { text: t.join, on: !busy, join: true };
+    if (queued) button = null;
+    else if (!me) button = { text: T.squad.lobby.late, on: !busy, join: true };
     else if (phase.at === "lead") button = { text: fmt(t.startIn, { s: Math.max(1, Math.ceil((round.at - now) / 1000)) }), on: false };
     else if (phase.at === "boom") button = { text: next ? fmt(t.nextIn, { s: Math.max(1, Math.ceil((next.at - now) / 1000)) }) : t.waiting, on: false };
     else button = yours ? { text: t.pass, on: true } : { text: t.waiting, on: false };
@@ -244,7 +247,7 @@ export function GiftView({
       )}
       {yours && <p className="yours">{t.yours}</p>}
       {me && mine < 0 && phase.at !== "results" && <p className="yours wait">{t.joining}</p>}
-      {!me && phase.at !== "results" && <p className="yours wait">{t.watching}</p>}
+      {queued && phase.at !== "results" && <p className="yours wait">{T.squad.lobby.queued}</p>}
       {button && (
         <div className="acts">
           <button
@@ -290,7 +293,7 @@ export default function SquadGift() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const drumRef = useRef<HTMLDivElement>(null);
-  const mode = room?.mode?.kind === "gift" && room.mode.at === openAt ? room.mode : null;
+  const mode = room?.mode?.kind === "gift" && !room.mode.wait && room.mode.at === openAt ? room.mode : null;
   const open = Boolean(mode);
   const key = mode ? `${mode.at}:${mode.song}` : null;
   const songAt = mode?.songAt ?? 0;

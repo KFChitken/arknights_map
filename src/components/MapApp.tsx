@@ -358,6 +358,7 @@ const SquadDance = dynamic(() => import("./app/squad/SquadDance"), { ssr: false 
 const SquadQuiz = dynamic(() => import("./app/squad/SquadQuiz"), { ssr: false });
 const SquadGift = dynamic(() => import("./app/squad/SquadGift"), { ssr: false });
 const SquadRace = dynamic(() => import("./app/squad/SquadRace"), { ssr: false });
+const SquadLobby = dynamic(() => import("./app/squad/SquadLobby"), { ssr: false });
 const SquadStack = dynamic(() => import("./app/squad/SquadStack"), { ssr: false });
 const SquadMiniPage = dynamic(() => import("./app/squad/SquadMini").then((m) => m.SquadMiniPage), { ssr: false });
 const SquadPip = dynamic(() => import("./app/squad/SquadMini").then((m) => m.SquadPip), { ssr: false });
@@ -6264,6 +6265,7 @@ export default function MapApp({
       {squadShown && <SquadQuiz />}
       {squadShown && <SquadGift />}
       {squadShown && <SquadRace />}
+      {squadShown && <SquadLobby />}
       {squadShown && <SquadStack />}
       {squadShown && <SquadModeInvite />}
       {/* the room small: as the whole page while the page is small (after the modes' cards, over them), and in the window over everything from 弹出小窗 */}

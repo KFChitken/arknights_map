@@ -69,9 +69,12 @@ const stack = (more: Partial<StackMode> = {}): StackMode => ({
   ...more,
 });
 /** W 的礼物's first round going since 1 s ago, its gift starting at your seat (0) */
+/** A match's round: begun as it was opened, the first of it, nobody asking for the next */
+const round = { begun: base.at, played: 0, next: [] as number[] };
 const gift = (more: Partial<GiftMode> = {}): GiftMode => ({
   kind: "gift",
   ...base,
+  ...round,
   in: [
     { h: 1, combo: 0 },
     { h: 2, combo: 0 },
@@ -90,6 +93,7 @@ const gift = (more: Partial<GiftMode> = {}): GiftMode => ({
 const race = (more: Partial<RaceMode> = {}): RaceMode => ({
   kind: "race",
   ...base,
+  ...round,
   in: [
     { h: 1, combo: 0 },
     { h: 2, combo: 0 },
@@ -112,6 +116,7 @@ const race = (more: Partial<RaceMode> = {}): RaceMode => ({
 const quiz = (more: Partial<QuizMode> = {}): QuizMode => ({
   kind: "quiz",
   ...base,
+  ...round,
   in: [
     { h: 1, combo: 0 },
     { h: 2, combo: 0 },
@@ -177,14 +182,14 @@ describe("the small room's strip", () => {
     expect(later).toMatchObject({ text: "W 的礼物 · 等礼物转回来…", lit: false, acts: [{ act: "pass", on: false }] });
   });
 
-  it("gives 急件赛 its place and metres with 跳 and 加油, the countdown before it, 再来一场 after it", () => {
+  it("gives 急件赛 its place and metres with 跳 and 加油, the countdown before it, your place after it", () => {
     const run = stripOf(room(), race(), NOW);
     expect(run.lit).toBe(true);
     expect(run.text).toMatch(/^急件赛 · 第 \d · 还差 \d+ m$/);
     expect(run.acts.map((a) => a.act)).toEqual(["jump", "cheer"]);
     expect(stripOf(room(), race({ start: NOW + 2_200 }), NOW).text).toBe("急件赛 · 3 秒后开跑");
     const end = race({ end: { at: NOW - 1_000, order: [1, 0, 2, 3], times: [21_000, 20_000, null, null], metres: [300, 300, 280, 270] } });
-    expect(stripOf(room(), end, NOW)).toMatchObject({ text: "急件赛 · 你第 2", acts: [{ act: "raceAgain", label: "再来一场" }] });
+    expect(stripOf(room(), end, NOW)).toMatchObject({ text: "急件赛 · 你第 2", acts: [] });
     // in it with no lane: the next one
     expect(stripOf(room(), race({ lanes: race().lanes.slice(1), start: NOW - RACE_LEAD_MS }), NOW).text).toBe("急件赛 · 下一场你在里面");
   });
@@ -197,7 +202,7 @@ describe("the small room's strip", () => {
 
   it("lights 随堂测 while a question waits for your answer, not once you picked; the dance with its combo and 跳", () => {
     expect(stripOf(room(), quiz(), NOW)).toMatchObject({ text: "随堂测 · 第 1 / 1 题", lit: true, acts: [] });
-    const picked: QuizPicks = { at: base.at, picks: { 0: { pick: 1 } }, joinedAt: null };
+    const picked: QuizPicks = { at: base.at, picks: { 0: { pick: 1 } } };
     expect(stripOf(room(), quiz(), NOW, picked).lit).toBe(false);
     const dance: SquadMode = { kind: "dance", ...base, in: [{ h: 1, combo: 7 }], song: "s1", name: "Song", songAt: NOW - 1_000 };
     expect(stripOf(room(), dance, NOW)).toEqual({ kind: "dance", text: "广场舞 · COMBO 7", lit: true, acts: [{ act: "danceTap", label: "跳", on: true }] });
@@ -257,7 +262,7 @@ describe("the small room", () => {
     expect(html).toContain("这是谁的剪影？");
     expect(html).toContain("<b>A</b><span>能天使</span>");
     expect(html.match(/<button type="button"><b>/g)).toHaveLength(3);
-    const picked = view(room({ mode: quiz() }), { ask, picks: { at: base.at, picks: { 0: { pick: 1 } }, joinedAt: null } });
+    const picked = view(room({ mode: quiz() }), { ask, picks: { at: base.at, picks: { 0: { pick: 1 } } } });
     expect(picked).toContain('class="mine" disabled=""><b>B</b>');
   });
 

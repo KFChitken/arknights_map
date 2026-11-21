@@ -9,6 +9,7 @@ import type { FishSpot } from "@/lib/fish/items";
 import { SQUAD_MAX, type SquadMember, type SquadRoom } from "@/lib/squad";
 import {
   giftAt,
+  isMatchKind,
   RACE_M,
   raceOrder,
   raceRun,
@@ -36,7 +37,7 @@ import {
   squadDanceTap,
   squadGiftPass,
   squadModeIn,
-  squadOpenMode,
+  squadStartMatch,
   squadQuizAnswer,
   squadRaceJump,
   squadRaceTap,
@@ -68,8 +69,8 @@ const TICK_MS = 250;
 const LINES_SHOWN = 2;
 
 type Panel = "say" | "throw" | "listen";
-/** What a strip's button does */
-export type StripAct = "join" | "danceTap" | "pass" | "jump" | "cheer" | "raceAgain" | "drop" | "stackAgain";
+/** What a strip's button does: 加入 (a match waiting: 准备; a round playing: 下一局算我), a match's 开始, a game's own */
+export type StripAct = "join" | "start" | "danceTap" | "pass" | "jump" | "cheer" | "drop" | "stackAgain";
 /** The strip of the mode playing: which, how it stands, lit when it is your turn, its buttons (on: may be tapped now) */
 export type Strip = { kind: SquadModeKind; text: string; lit: boolean; acts: { act: StripAct; label: string; on: boolean }[] };
 
@@ -81,7 +82,17 @@ export function stripOf(room: SquadRoom, mode: SquadMode, now: number, picks: Qu
   const kind = mode.kind;
   const line = (what: string) => fmt(t.line, { mode: t.short[kind], what });
   const me = mode.in.find((m) => m.h === room.you);
-  if (!me) return { kind, text: line(fmt(t.people, { n: mode.in.length })), lit: false, acts: [{ act: "join", label: T.squad.plays.join, on: true }] };
+  // a match waiting: its initiator starts it, one not ready readies
+  if (mode.wait) {
+    const text = fmt(T.squad.lobby.strip, { mode: t.short[kind], n: mode.in.length });
+    if (mode.by === room.you) return { kind, text, lit: false, acts: [{ act: "start", label: T.squad.lobby.stripStart, on: true }] };
+    return { kind, text, lit: false, acts: me ? [] : [{ act: "join", label: T.squad.lobby.stripReady, on: true }] };
+  }
+  if (!me) {
+    const queued = "next" in mode && mode.next.includes(room.you);
+    if (isMatchKind(kind)) return { kind, text: line(queued ? T.squad.mini.raceNext : fmt(t.people, { n: mode.in.length })), lit: false, acts: queued ? [] : [{ act: "join", label: T.squad.lobby.stripNext, on: true }] };
+    return { kind, text: line(fmt(t.people, { n: mode.in.length })), lit: false, acts: [{ act: "join", label: T.squad.plays.join, on: true }] };
+  }
   if (mode.kind === "dance") {
     const going = now >= mode.songAt && now < mode.until;
     const text = now < mode.songAt ? fmt(t.startsIn, { s: secs(mode.songAt - now) }) : fmt(t.danceCombo, { n: me.combo });
@@ -91,9 +102,8 @@ export function stripOf(room: SquadRoom, mode: SquadMode, now: number, picks: Qu
     const ph = quizPhase(mode, now);
     if (ph.at === "results") return { kind, text: line(t.done), lit: false, acts: [] };
     if (ph.at === "lead") return { kind, text: line(fmt(t.startsIn, { s: secs(ph.q.at - now) })), lit: false, acts: [] };
-    const mine = picks?.at === mode.at ? picks : null;
-    const late = (mine?.joinedAt ?? 0) > ph.q.at;
-    const open = ph.at === "ask" && ph.q.answer === undefined && !late && !mine?.picks[ph.q.n];
+    const mine = picks?.at === mode.begun ? picks : null;
+    const open = ph.at === "ask" && ph.q.answer === undefined && !mine?.picks[ph.q.n];
     return { kind, text: line(fmt(t.quizNo, { n: ph.q.n + 1, of: mode.questions.length })), lit: open, acts: [] };
   }
   if (mode.kind === "gift") {
@@ -114,9 +124,7 @@ export function stripOf(room: SquadRoom, mode: SquadMode, now: number, picks: Qu
     const ph = racePhase(mode, run, now);
     if (ph === "lead") return { kind, text: line(fmt(T.squad.race.startsIn, { s: secs(mode.start - now) })), lit: false, acts: [] };
     if (ph === "checking") return { kind, text: line(T.squad.race.checking), lit: false, acts: [] };
-    if (ph === "end" && mode.end) {
-      return { kind, text: line(fmt(T.squad.race.youPlace, { rank: mode.end.order.indexOf(lane) + 1 })), lit: false, acts: [{ act: "raceAgain", label: T.squad.race.again, on: true }] };
-    }
+    if (ph === "end" && mode.end) return { kind, text: line(fmt(T.squad.race.youPlace, { rank: mode.end.order.indexOf(lane) + 1 })), lit: false, acts: [] };
     if (run.done[lane] !== null) return { kind, text: line(fmt(T.squad.race.youPlace, { rank: raceOrder(run).indexOf(lane) + 1 })), lit: false, acts: [] };
     const rank = 1 + run.x.filter((x, i) => i !== lane && x > run.x[lane]).length;
     return {
@@ -185,11 +193,10 @@ function QuizBit({ room, mode, now, ask, picks, busy, onPick }: { room: SquadRoo
   const ph = quizPhase(mode, now);
   if (ph.at !== "ask" && ph.at !== "reveal") return null;
   const q = ph.q;
-  const mine = picks?.at === mode.at ? picks : null;
+  const mine = picks?.at === mode.begun ? picks : null;
   const pick = mine?.picks[q.n];
-  const late = (mine?.joinedAt ?? 0) > q.at;
   const answer = q.answer ?? pick?.answer;
-  const open = ph.at === "ask" && q.answer === undefined && !late && !pick;
+  const open = ph.at === "ask" && q.answer === undefined && !pick;
   const options = ask?.options ?? q.options;
   const res = resultLine(room, q, pick, now);
   const ask2 = q.kind === "meme" ? (ask?.ask ?? q.ask) : T.squad.quiz.asks[q.kind as "sil" | "crop" | "intro"];
@@ -307,7 +314,7 @@ export function MiniView({
                     key={a.act}
                     type="button"
                     className={`ma a-${a.act}`}
-                    disabled={!a.on || (busy && (a.act === "join" || a.act === "raceAgain" || a.act === "stackAgain"))}
+                    disabled={!a.on || (busy && (a.act === "join" || a.act === "start" || a.act === "stackAgain"))}
                     onPointerDown={(e) => e.button === 0 && a.on && (a.act === "jump" || a.act === "cheer" || a.act === "drop" || a.act === "danceTap" || a.act === "pass") && onAct(a.act)}
                     onClick={(e) => {
                       // the quick ones go at the press; the rest, and keys, at the click
@@ -319,7 +326,7 @@ export function MiniView({
                   </button>
                 ))}
               </div>
-              {mode?.kind === "quiz" && mode.in.some((m) => m.h === room.you) && <QuizBit room={room} mode={mode} now={now} ask={ask} picks={picks} busy={busy} onPick={onPick} />}
+              {mode?.kind === "quiz" && !mode.wait && mode.in.some((m) => m.h === room.you) && <QuizBit room={room} mode={mode} now={now} ask={ask} picks={picks} busy={busy} onPick={onPick} />}
             </div>
           )}
           <div className="mr4">{room.members.map(roach)}</div>
@@ -411,7 +418,7 @@ function SquadMini({ room, where, onListen, onToast }: { room: SquadRoom; where:
   const rootRef = useRef<HTMLDivElement>(null);
   const lastDrop = useRef(0);
   const mode = room.mode && room.mode.endsAt > now ? room.mode : null;
-  const quiz = mode?.kind === "quiz" && mode.in.some((m) => m.h === room.you) ? mode : null;
+  const quiz = mode?.kind === "quiz" && !mode.wait && mode.in.some((m) => m.h === room.you) ? mode : null;
   const asks = useQuizAsks(quiz, now, setMsg);
   const ph = quiz ? quizPhase(quiz, now) : null;
   const q = ph && ph.at !== "results" ? ph.q : null;
@@ -462,7 +469,7 @@ function SquadMini({ room, where, onListen, onToast }: { room: SquadRoom; where:
     if (act === "pass") return void squadGiftPass().catch(fail);
     if (act === "jump") return void squadRaceJump().catch(fail);
     if (act === "cheer") return squadRaceTap();
-    if (act === "raceAgain") return void run(() => squadOpenMode("race"));
+    if (act === "start") return void run(() => squadStartMatch());
     if (act === "stackAgain") return void run(() => squadStackAgain());
     // 放: one a second, as the server takes them
     const tap = Date.now();

@@ -68,11 +68,13 @@ const nothing = () => {};
 describe("「玩」's tiles", () => {
   it("offers 开 while nothing plays, to its last opener too (no wait), and once the mode playing is over", () => {
     expect(modeRow(room(), "dance", NOW)).toEqual({ kind: "dance", label: "开", does: "open" });
+    // a match's: 发起 (you its initiator)
+    expect(modeRow(room(), "race", NOW)).toEqual({ kind: "race", label: "发起", does: "open" });
     expect(modeRow(room({ mode: dance({ endsAt: NOW }) }), "dance", NOW).does).toBe("open");
-    expect(modeRow(room({ mode: dance() }), "dance", NOW)).toEqual({ kind: "dance", label: "正在玩 · 加入", does: "join" });
+    expect(modeRow(room({ mode: dance() }), "dance", NOW)).toEqual({ kind: "dance", label: "正在玩 · 加入", does: "join", tag: "加入" });
     const mine = room({ mode: dance({ in: [{ h: 2, combo: 0 }, { h: 1, combo: 3 }] }) });
-    expect(modeRow(mine, "dance", NOW)).toEqual({ kind: "dance", label: "在玩 · 打开", does: "look" });
-    expect(modeRow(mine, "quiz", NOW)).toEqual({ kind: "quiz", label: "等这局完", does: null });
+    expect(modeRow(mine, "dance", NOW)).toEqual({ kind: "dance", label: "在玩 · 打开", does: "look", tag: "在玩" });
+    expect(modeRow(mine, "quiz", NOW)).toEqual({ kind: "quiz", label: "等龙门广场舞这局完（一次只能玩一个）", does: null });
   });
 
   const grid = (r: SquadRoom, fish: FishLook = "rest", msg: string | null = null) =>

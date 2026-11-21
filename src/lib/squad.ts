@@ -3,7 +3,7 @@ import { SERVERS } from "./games";
 import type { RoachPass } from "./passes";
 import type { PublicProfile } from "./profile";
 import type { SquadBall, SquadFire, SquadOn } from "./squadFire";
-import type { SquadMode } from "./squadMode";
+import type { SquadMode, SquadModeKind } from "./squadMode";
 
 /**
  * 一起卫戍: rooms where players of 卫戍协议 find each other for its 联合模拟 (four at most, the host one of them), switched
@@ -260,9 +260,15 @@ export const PHRASE_ROWS = [
   /**
    * 对 TA 说: said to one in the room (to), only while it waits; never among 说话's rows, never by a 人机 at random.
    * 36 能换个策略吗？ 37 能把「{s}」让给我吗？ (s: TA's strategy, filled in where it shows) 38 选个策略吧 39 快准备呀
-   * 40 谢谢！; the answers 41 好，我换 42 不换啦，你换一个？ 43 好嘞
+   * 40 谢谢！; the answers 41 好，我换 42 不换啦，你换一个？ 43 好嘞; 45 来一起玩？ (to a player, never a 人机: only
+   * while a match waits or plays, and while the room plays too)
    */
-  ["to", [36, 37, 38, 39, 40, 41, 42, 43]],
+  ["to", [36, 37, 38, 39, 40, 41, 42, 43, 45]],
+  /**
+   * 喊一声 from a match's card (玩点什么): 44 来{verb}{mode}，差你一个！, filled in by the match where it shows; only
+   * while one waits or plays; never among 说话's rows
+   */
+  ["game", [44]],
 ] as const;
 export type PhraseRow = (typeof PHRASE_ROWS)[number][0];
 const PHRASES = new Set<number>(PHRASE_ROWS.flatMap(([, ids]) => ids));
@@ -270,8 +276,12 @@ export const isPhrase = (v: unknown): v is number => Number.isInteger(v) && PHRA
 const TO_PHRASES = new Set<number>(PHRASE_ROWS.find(([r]) => r === "to")![1]);
 /** A line said to one in the room (对 TA 说) */
 export const isToPhrase = (p: number) => TO_PHRASES.has(p);
-/** 对 TA 说's lines by what they are: asked to change (36), to give up TA's strategy (37), to pick one (38), to ready (39), thanks (40); the answers (41–43) */
-export const TO = { change: 36, giveUp: 37, pick: 38, ready: 39, thanks: 40, ok: 41, no: 42, sure: 43 } as const;
+/** 对 TA 说's lines by what they are: asked to change (36), to give up TA's strategy (37), to pick one (38), to ready (39), thanks (40); the answers (41–43); asked to play a match (45) */
+export const TO = { change: 36, giveUp: 37, pick: 38, ready: 39, thanks: 40, ok: 41, no: 42, sure: 43, play: 45 } as const;
+/** 喊一声 from a match's card */
+export const SHOUT = 44;
+/** The lines only said while a match waits or plays (喊一声, 来一起玩？) */
+export const isMatchCall = (p: number) => p === SHOUT || p === TO.play;
 /** One line every SAY_EVERY_MS, and SAY_PER_HOUR an hour, each player */
 export const SAY_EVERY_MS = 3_000;
 export const SAY_PER_HOUR = 60;
@@ -463,7 +473,9 @@ export type SquadTell =
       /**
        * round, pose: one's as it is now, which a page of now takes as it is, without asking again; stop: 停止加入 (on)
        * or 恢复加入; host: the host left, handing the room to h; listen: 卫戍的一起听 changed (on, over, someone in or
-       * out of it, invited, 下次吧)
+       * out of it, invited, 下次吧); lobby: a match's news (玩点什么, src/lib/squadMode.ts): h picked it (open), readied
+       * (ready) or started it (start); handed from h to by (hand); gone, nobody ready (gone) or nobody doing anything
+       * (idle); mode: which, said even once it is gone
        */
       what?: {
         kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen" | "pond" | "fire" | "shake" | "mode" | "quiz" | "gift" | "race" | "stack";
@@ -472,6 +484,9 @@ export type SquadTell =
         round?: SquadRound;
         pose?: SquadPose;
         on?: boolean;
+        lobby?: "open" | "ready" | "start" | "hand" | "gone" | "idle";
+        by?: number;
+        mode?: SquadModeKind;
       };
     }
   /** to: said to the one with that number (对 TA 说) */

@@ -49,6 +49,7 @@ export default function SquadMateCard({
   style,
   me,
   onSay,
+  onCall,
   onMove,
   onTouch,
   onKick,
@@ -74,6 +75,8 @@ export default function SquadMateCard({
   me?: SquadMember;
   /** While the room waits: a line said to TA alone, by its number */
   onSay?: (p: number) => void;
+  /** While a match waits or plays (玩点什么), the room playing or not: 来一起玩？ to TA (a player, not in it) */
+  onCall?: () => void;
   /** On a computer, the bar beside 卫戍's: 击掌 or 贴贴 to TA, from the card (under TA's round, or 对 TA 说 while waiting) */
   onMove?: (move: "five" | "hug") => void;
   onTouch: (bold: boolean) => Promise<void> | void;
@@ -154,6 +157,16 @@ export default function SquadMateCard({
               <span>{T.squad.fight.peekExtrasNone}</span>
             )}
           </div>
+        </div>
+      )}
+      {onCall && (
+        <div className="sq-sayto" role="group" aria-label={T.squad.mate.sayTo}>
+          <small>{T.squad.mate.sayTo}</small>
+          <span className="chips">
+            <button type="button" disabled={busy} onClick={onCall}>
+              {lineWords(TO.play)}
+            </button>
+          </span>
         </div>
       )}
       {!playing && onSay && (

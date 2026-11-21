@@ -29,7 +29,7 @@ const me = (more: Partial<SquadMember> = {}) => member({ h: 1, name: "海嗣饲�
 describe("a line said to one in the room (对 TA 说)", () => {
   it("is its own row, out of 说话 and of what a 人机 says by itself", () => {
     const to = PHRASE_ROWS.find(([r]) => r === "to")![1];
-    expect(to).toEqual([36, 37, 38, 39, 40, 41, 42, 43]);
+    expect(to).toEqual([36, 37, 38, 39, 40, 41, 42, 43, 45]);
     expect(to.every(isPhrase)).toBe(true);
   });
 

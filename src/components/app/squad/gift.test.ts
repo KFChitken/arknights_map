@@ -61,6 +61,9 @@ const gift = (more: Partial<GiftMode> = {}, rounds?: GiftRound[]): GiftMode => (
   kind: "gift",
   by: 1,
   at: NOW - 1_000,
+  begun: NOW - 1_000,
+  played: 0,
+  next: [],
   in: [
     { h: 1, combo: 0 },
     { h: 2, combo: 0 },
@@ -171,13 +174,14 @@ describe("W 的礼物's card", () => {
     expect(view(worn, t).match(/<img class="ladle"/g)).toHaveLength(1);
   });
 
-  it("asks one watching to join from the next round, one in it not seated yet to wait, and gives how often each was hit at the end", () => {
-    const watching = view(room({ mode: gift({ in: [{ h: 2, combo: 0 }], by: 2 }, [{ at: NOW, seats: [2, -100, -101, -102], from: 0, taps: [] }]) }), NOW + 500);
-    expect(watching).toContain("你在围观，加入以后下一轮坐进来");
-    expect(watching).toContain('<button type="button" class="pass join">下一轮加入</button>');
+  it("leaves one not in the round to watch it (下一局算我), says so once asked, and gives how often each was hit at the end", () => {
+    const seats = [{ at: NOW, seats: [2, -100, -101, -102], from: 0, taps: [] }];
+    const watching = view(room({ mode: gift({ in: [{ h: 2, combo: 0 }], by: 2 }, seats) }), NOW + 500);
+    expect(watching).toContain('<button type="button" class="pass join">这局先围观 · 下一局算我</button>');
     expect(watching).not.toContain("不玩了，去围观");
-    const waiting = view(room({ mode: gift({ in: [{ h: 2, combo: 0 }, { h: 1, combo: 0 }], by: 2 }, [{ at: NOW, seats: [2, -100, -101, -102], from: 0, taps: [] }]) }), NOW + 500);
-    expect(waiting).toContain("下一轮坐进来");
+    const queued = view(room({ mode: gift({ in: [{ h: 2, combo: 0 }], by: 2, next: [1] }, seats) }), NOW + 500);
+    expect(queued).toContain('<p class="yours wait">排进下一局了：这局跑完你就在里面</p>');
+    expect(queued).not.toContain('class="pass');
     // the end: most hit first, the 人机 after players with as many, those never hit last
     const ended = gift({ in: [{ h: 1, combo: 2 }, { h: 2, combo: 0 }] }, [
       { at: NOW - 90_000, seats: [1, 2, -100, -101], from: 0, taps: [], stop: NOW - 80_000, hit: 0 },
@@ -202,9 +206,9 @@ describe("W 的礼物's card", () => {
     expect(html).not.toContain('class="pass');
   });
 
-  it("is a row of 玩点什么 as the others are", () => {
-    expect(modeRow(room(), "gift", NOW)).toEqual({ kind: "gift", label: "开", does: "open" });
-    expect(modeRow(room({ mode: gift({ in: [{ h: 2, combo: 0 }], by: 2 }) }), "gift", NOW)).toEqual({ kind: "gift", label: "正在玩 · 加入", does: "join" });
+  it("is a match of 玩点什么: 发起 while nothing plays, 下一局 to one not in a round of it", () => {
+    expect(modeRow(room(), "gift", NOW)).toEqual({ kind: "gift", label: "发起", does: "open" });
+    expect(modeRow(room({ mode: gift({ in: [{ h: 2, combo: 0 }], by: 2 }) }), "gift", NOW)).toEqual({ kind: "gift", label: "下一局", does: "next", tag: "下一局" });
   });
 });
 

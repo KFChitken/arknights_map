@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, lte, or } from "drizzle-orm";
 import { T } from "@/i18n";
 import { ROACH_AVATARS, ROACH_COLORS } from "../types";
 import { THROWS } from "../squadFire";
@@ -29,7 +29,7 @@ import { squadBots, squadMembers, squadRooms } from "./schema";
  * comes. Where the gift is follows from those alone (giftAt), so nothing runs while it goes round: a 传 is checked
  * against it and kept (passGift); as a round's song stops (a timer in the process that opened it, the sweep, or the
  * next 传), the one holding it is hit, wears 漏勺 (two or more players in it), and the next round is seated
- * (settleGift). squadModes.ts opens it, takes players in and out, and ends it.
+ * (settleGift). squadModes.ts starts it, takes players out, and ends it.
  */
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -48,12 +48,22 @@ export async function roomBotsOf(exec: Tx | typeof db, roomId: string): Promise<
     .orderBy(asc(squadBots.addedAt));
 }
 
-/** Those playing it now (not 人机), as they came (each one's coming kept in mode_tap_at) */
-export async function playersOf(exec: Tx | typeof db, roomId: string): Promise<number[]> {
+/**
+ * Those playing the round begun at `begun` now (not 人机, not gone out to watch, not those who asked for the next), as
+ * they readied (mode_tap_at)
+ */
+export async function playersOf(exec: Tx | typeof db, roomId: string, begun: number): Promise<number[]> {
   const rows = await exec
     .select({ h: squadMembers.handle, at: squadMembers.modeTapAt })
     .from(squadMembers)
-    .where(and(eq(squadMembers.roomId, roomId), isNull(squadMembers.leftAt), eq(squadMembers.modeIn, true)));
+    .where(
+      and(
+        eq(squadMembers.roomId, roomId),
+        isNull(squadMembers.leftAt),
+        eq(squadMembers.modeIn, true),
+        or(isNull(squadMembers.modeTapAt), lte(squadMembers.modeTapAt, new Date(begun))),
+      ),
+    );
   return rows.sort((a, b) => (a.at?.getTime() ?? 0) - (b.at?.getTime() ?? 0) || a.h - b.h).map((r) => r.h);
 }
 
@@ -69,18 +79,18 @@ export function modeBots(roomBots: readonly { no: number }[], rand: (n: number) 
 }
 
 /**
- * W 的礼物 as it opens (at now): its five rounds' times, GIFT_ROUND_MIN_MS–GIFT_ROUND_MAX_MS each; its seed; the
- * mode's own 人机 (numbered after the room's, enough for every seat but its opener's); the first round seated, from
- * its opener.
+ * W 的礼物 as its initiator starts it (at now): its five rounds' times, GIFT_ROUND_MIN_MS–GIFT_ROUND_MAX_MS each; its
+ * seed; the mode's own 人机 (numbered after the room's, enough for every seat but one); the first round seated with
+ * those ready (players: its initiator first, then as they readied), the room's 人机 and its own, from its initiator.
  */
-export async function makeGift(roomId: string, opener: number, now: number, rand: (n: number) => number): Promise<GiftData> {
+export async function makeGift(exec: Tx | typeof db, roomId: string, players: readonly number[], now: number, rand: (n: number) => number): Promise<GiftData> {
   const lens = Array.from({ length: GIFT_ROUNDS }, () => GIFT_ROUND_MIN_MS + rand(GIFT_ROUND_MAX_MS - GIFT_ROUND_MIN_MS + 1));
   const plan = giftPlan(now, lens);
-  const roomBots = await roomBotsOf(db, roomId);
+  const roomBots = await roomBotsOf(exec, roomId);
   const bots = modeBots(roomBots, rand);
   const seats = giftSeats(
     [],
-    [opener],
+    players,
     roomBots.map((b) => b.h),
     bots.map((b) => b.h),
   );
@@ -108,7 +118,7 @@ export const giftShownUntil = (data: GiftData, until: number, now: number) => (d
  * next round seated (players as they are now, from the one hit). Says whether anything changed, and whether no one
  * plays it any more (it should end).
  */
-export async function settleGift(tx: Tx, roomId: string, data: GiftData, now: number): Promise<{ changed: boolean; empty: boolean }> {
+export async function settleGift(tx: Tx, roomId: string, data: GiftData, now: number, begun: number): Promise<{ changed: boolean; empty: boolean }> {
   let changed = false;
   let empty = false;
   for (let r = 0; r < data.rounds.length; r++) {
@@ -119,7 +129,7 @@ export async function settleGift(tx: Tx, roomId: string, data: GiftData, now: nu
     round.hit = hit;
     changed = true;
     const h = round.seats[hit];
-    const players = await playersOf(tx, roomId);
+    const players = await playersOf(tx, roomId, begun);
     if (h >= 0 && players.includes(h)) {
       const mine = and(eq(squadMembers.roomId, roomId), eq(squadMembers.handle, h), isNull(squadMembers.leftAt));
       const [row] = await tx.select({ combo: squadMembers.modeCombo }).from(squadMembers).where(mine);
@@ -151,14 +161,14 @@ export async function settleGift(tx: Tx, roomId: string, data: GiftData, now: nu
 }
 
 /**
- * One coming in or going out (a player of the room): the next round, while it has not started, seated again as the
- * players are now. Within the transaction that changed them, the room's row locked. Says whether it changed.
+ * One going out to watch (a player of the round begun at `begun`): the next round, while it has not started, seated
+ * again as the players are now. Within the transaction that changed them, the room's row locked. Says whether it changed.
  */
-export async function reseatGift(tx: Tx, roomId: string, data: GiftData, now: number): Promise<boolean> {
+export async function reseatGift(tx: Tx, roomId: string, data: GiftData, now: number, begun: number): Promise<boolean> {
   const r = data.rounds.length - 1;
   const next = data.rounds[r];
   if (!next || next.at <= now || next.hit !== undefined) return false;
-  const players = await playersOf(tx, roomId);
+  const players = await playersOf(tx, roomId, begun);
   const roomBots = (await roomBotsOf(tx, roomId)).map((b) => b.h);
   const seats = giftSeats(
     next.seats,

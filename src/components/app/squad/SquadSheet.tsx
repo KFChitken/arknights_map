@@ -59,6 +59,7 @@ import { ListenRow } from "./SquadListen";
 import SquadPlays from "./SquadPlays";
 import SquadTalk from "./SquadTalk";
 import SquadToMe from "./SquadToMe";
+import { mayCall } from "./SquadModeInvite";
 import { useOperatorArt, type Art } from "../OperatorNames";
 import Sheet from "../Sheet";
 import {
@@ -80,6 +81,7 @@ import {
   setSquadPrefs,
   setSquadStopped,
   squadBot,
+  squadServerNow,
   squadState,
   useSquadCard,
   useSquadFloats,
@@ -1090,6 +1092,7 @@ function RoomView({
               className="in-sheet"
               me={me}
               onSay={room.state === "wait" ? (p) => void sayTo(p, menuOf.h).then((sent) => sent && setMenu(null)) : undefined}
+              onCall={mayCall(room, menuOf.h, squadServerNow()) ? () => void sayTo(TO.play, menuOf.h).then((sent) => sent && setMenu(null)) : undefined}
               onTouch={(bold) => onTouch(menuOf.h, bold)}
               onKick={() => (setMenu(null), void run(() => kickFromSquad(menuOf.h)))}
               onSafety={() => (setMenu(null), onSafety(`sq:${room.id}:${menuOf.h}`, menuOf.name))}
@@ -1175,6 +1178,7 @@ function RoomView({
             toMe={moves.find((x) => x.to === m.h)}
             open={menu === m.h}
             inMode={room.mode?.in.some((x) => x.h === m.h) ? room.mode.kind : undefined}
+            readyMode={Boolean(room.mode?.wait && room.mode.in.some((x) => x.h === m.h))}
             onCore={() => setPicking("core")}
             onStrategy={() => (room.state === "go" ? setTalking("round") : setPicking("strategy"))}
             onMenu={() => setMenu((x) => (x === m.h ? null : m.h))}
@@ -1577,6 +1581,7 @@ function MemberTile({
   toMe,
   open,
   inMode,
+  readyMode = false,
   onCore,
   onStrategy,
   onMenu,
@@ -1600,6 +1605,8 @@ function MemberTile({
   open: boolean;
   /** In the mode playing (玩点什么): 在跳 or 在答, its roach dancing in 龙门广场舞 */
   inMode?: SquadModeKind;
+  /** Ready for a match waiting for people: 等开局 */
+  readyMode?: boolean;
   onCore: () => void;
   onStrategy: () => void;
   onMenu: () => void;
@@ -1614,7 +1621,7 @@ function MemberTile({
       {m.bot && <span className="bt">{T.squad.bot.tag}</span>}
       <Bubble line={line} lift={lift} to={line?.to === undefined ? null : lineTo?.(line.to)} />
       <SquadRoach m={inMode === "dance" && m.pose !== 1 ? { ...m, pose: 1 } : m} size={44} line={line} move={move} toMe={toMe} play="tile" />
-      {inMode && <span className={`dz k-${inMode}`}>{T.squad.modes.tileTags[inMode]}</span>}
+      {inMode && <span className={`dz k-${inMode}`}>{readyMode ? T.squad.modes.readyTag : T.squad.modes.tileTags[inMode]}</span>}
       <span className="nm">
         {m.name}
         {m.fireTop && <SmallFlame label={T.lib.badges.firewatch.name} />}

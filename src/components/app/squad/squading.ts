@@ -6,6 +6,7 @@ import {
   isToPhrase,
   LAST_LINE_MS,
   SAY_SHOW_MS,
+  SHOUT,
   SQUAD_MAX,
   strategyOf,
   TO,
@@ -29,6 +30,8 @@ import {
   DANCE_TAP_EVERY_MS,
   DANCE_WINDOW_MS,
   danceEnds,
+  isMatchKind,
+  LOBBY_ASK_AGAIN_MS,
   RACE_TAPS_MAX,
   STACK_HAND_EVERY_MS,
   STACK_HAND_MAX,
@@ -120,6 +123,8 @@ const fireHide = kept<boolean | undefined>(undefined);
 export const squadRoomNow = room.get;
 export const useSquadRoom = () => useSyncExternalStore(room.on, room.get, () => null);
 export const useSquadFloats = (): SquadFloat[] => useSyncExternalStore(floats.on, floats.get, () => NO_FLOATS);
+/** The lines floating now (the tests) */
+export const squadFloatsNow = floats.get;
 export const useSquadLines = (): SquadLine[] => useSyncExternalStore(lines.on, lines.get, () => NO_LINES);
 export const useSquadMoves = (): SquadMoveDone[] => useSyncExternalStore(moves.on, moves.get, () => NO_MOVES);
 export const useSquadThrows = (): SquadThrown[] => useSyncExternalStore(throws.on, throws.get, () => NO_THROWS);
@@ -133,6 +138,9 @@ export const setSquadPickNext = (on: boolean) => pickNext.set(on);
 /** A line's words as they show: 能把「{s}」让给我吗？ with the strategy s (its operator); with none known, 能换个策略吗？ */
 export function lineWords(p: number, s?: number | null) {
   const text = T.squad.say.lines[p - 1] ?? "";
+  // 喊一声: as the match waiting or playing has it, else a match's in general
+  const kind = p === SHOUT ? room.get()?.mode?.kind : undefined;
+  if (kind && isMatchKind(kind)) return T.squad.say.shout[kind];
   if (!text.includes("{s}")) return text;
   const op = s == null ? null : strategyOf(s)?.op;
   return op ? fmt(text, { s: op }) : (T.squad.say.lines[TO.change - 1] ?? "");
@@ -149,6 +157,8 @@ export const seeSquadRound = () => roundUnseen.set(false);
  */
 const modeCard = kept<number | null>(null);
 export const useSquadModeCard = () => useSyncExternalStore(modeCard.on, modeCard.get, () => null);
+/** The card open now (the tests) */
+export const squadModeCardNow = modeCard.get;
 export function openSquadModeCard() {
   const mode = room.get()?.mode;
   if (mode) modeCard.set(mode.at);
@@ -156,24 +166,37 @@ export function openSquadModeCard() {
 export const closeSquadModeCard = () => modeCard.set(null);
 
 /**
- * 凯尔希随堂测: your answers in the quiz that started at `at`, by question number, as picked and then as the server
- * judged them (right; first: the point; answer: which was right), and when you joined it (on the server's clock;
- * null: in from its start), as one who joins answers from the next question on
+ * 凯尔希随堂测: your answers in the round begun at `at` (its initiator's 开始), by question number, as picked and then
+ * as the server judged them (right; first: the point; answer: which was right)
  */
 export type QuizPick = { pick: number; right?: boolean; first?: boolean; answer?: number };
-export type QuizPicks = { at: number; picks: Readonly<Record<number, QuizPick>>; joinedAt: number | null };
+export type QuizPicks = { at: number; picks: Readonly<Record<number, QuizPick>> };
 const quizPicks = kept<QuizPicks | null>(null);
 export const useSquadQuizPicks = () => useSyncExternalStore(quizPicks.on, quizPicks.get, () => null);
 export const squadQuizPicksNow = quizPicks.get;
 const picksOf = (at: number): QuizPicks => {
   const p = quizPicks.get();
-  return p?.at === at ? p : { at, picks: {}, joinedAt: null };
+  return p?.at === at ? p : { at, picks: {} };
 };
 
-/** 「XX 开了龙门广场舞，加入？」 answered 不了: by the mode's start, not asked again for it */
-const modeAsked = kept<number | null>(null);
+/**
+ * 「XX 开了龙门广场舞，加入？」 (or a match's) answered 不了, or the mode opened, joined or left: by the mode's start
+ * (at), not asked again for it, and when (a match's 喊一声 asks again from LOBBY_ASK_AGAIN_MS after a 不了)
+ */
+export type ModeAsked = { at: number; when: number };
+const modeAsked = kept<ModeAsked | null>(null);
 export const useSquadModeAsked = () => useSyncExternalStore(modeAsked.on, modeAsked.get, () => null);
-export const dismissSquadMode = (at: number) => modeAsked.set(at);
+/** The match put away now (the tests) */
+export const squadModeAskedNow = modeAsked.get;
+const askedNow = (at: number) => modeAsked.set({ at, when: Date.now() });
+export const dismissSquadMode = (at: number) => askedNow(at);
+/** Asked again for the match waiting or playing (someone's 喊一声, or 来一起玩？ to you), unless you said 不了 just now */
+function askAgain(r: SquadRoom) {
+  const asked = modeAsked.get();
+  if (!r.mode || !isMatchKind(r.mode.kind)) return;
+  if (asked && asked.at === r.mode.at && Date.now() - asked.when < LOBBY_ASK_AGAIN_MS) return;
+  modeAsked.set(null);
+}
 
 /** 跳's answers as they come (the player's own judge, 准！ or 歪了), by when */
 const danceJudge = kept<{ ok: boolean; at: number } | null>(null);
@@ -434,6 +457,8 @@ export function heardSquad(raw: unknown) {
       // your own, shown as you said it
       if (it.h === r.you && lines.get().some((l) => l.h === it.h && l.p === it.p && Date.now() - l.at < ECHO_MS)) continue;
       showLine(r, it.h, it.p, it.to);
+      // a match's 喊一声 by someone else, or 来一起玩？ to you: the line asking you to it again
+      if ((it.p === SHOUT && it.h !== r.you) || (it.p === TO.play && it.to === r.you)) askAgain(r);
     }
     return;
   }
@@ -471,7 +496,7 @@ export function heardSquad(raw: unknown) {
   // 企鹅物流急件赛: what the others did, into their lanes (your own went in as you did it)
   if (tell.t === "race") {
     const mode = r.mode;
-    if (mode?.kind !== "race") return;
+    if (mode?.kind !== "race" || mode.wait) return;
     const lanes = mode.lanes.map((l) => {
       const mine = tell.items.filter((x) => x.h === l.h && x.h !== r.you);
       if (!mine.length) return l;
@@ -503,11 +528,12 @@ export function heardSquad(raw: unknown) {
       if (!next || !what) return;
       // 玩点什么: a mode over (by itself) is said to those who were in it or looking at it; one opened asks the others itself
       if (what.kind === "mode") {
-        if (!next.mode && what.on === false && what.h === undefined && was) addFloat(T.squad.modes.ended[was]);
-        // a race opened with you in it (you asked for the next one): its card opens
+        if (!next.mode && what.on === false && what.h === undefined && !what.lobby && was) addFloat(T.squad.modes.ended[was]);
+        if (what.lobby) lobbyFloat(r, next, what);
+        // a match started with you in it: its card opens
         const m = next.mode;
-        if (what.on && m?.kind === "race" && m.by !== next.you && m.in.some((x) => x.h === next.you)) {
-          modeAsked.set(m.at);
+        if (what.lobby === "start" && m && !m.wait && m.in.some((x) => x.h === next.you)) {
+          askedNow(m.at);
           modeCard.set(m.at);
         }
         return;
@@ -538,6 +564,26 @@ export function heardSquad(raw: unknown) {
       if (text) addFloat(text);
     })
     .catch(() => {});
+}
+
+/**
+ * What a match's news says to the room (玩点什么): picked, readied, started, handed on, gone; what you did yourself
+ * not said back to you, but its being handed to you. The one who went may have left: their name from the room before.
+ */
+function lobbyFloat(was: SquadRoom, next: SquadRoom, what: NonNullable<Extract<SquadTell, { t: "room" }>["what"]>) {
+  const t = T.squad.float;
+  const kind = what.mode;
+  if (!kind) return;
+  const mode = T.squad.modes.names[kind];
+  const nameOf = (h: number | undefined) => next.members.find((m) => m.h === h)?.name ?? was.members.find((m) => m.h === h)?.name ?? T.squad.quiz.someone;
+  if (what.lobby === "idle") return addFloat(fmt(t.matchIdle, { mode }));
+  if (what.lobby === "hand" && what.by === next.you) return addFloat(fmt(t.handYou, { a: nameOf(what.h) }));
+  if (what.h === next.you) return;
+  if (what.lobby === "open") return addFloat(fmt(t.matchOpen, { name: nameOf(what.h), mode }));
+  if (what.lobby === "ready") return addFloat(fmt(t.matchReady, { name: nameOf(what.h), mode }));
+  if (what.lobby === "start") return addFloat(fmt(kind === "race" ? t.matchStartRun : t.matchStart, { name: nameOf(what.h) }));
+  if (what.lobby === "hand") return addFloat(fmt(t.hand, { a: nameOf(what.h), b: nameOf(what.by) }));
+  if (what.lobby === "gone") return addFloat(fmt(t.matchGone, { mode }));
 }
 
 /** After the event stream was down a while: the room as it is now */
@@ -709,29 +755,33 @@ async function timed<R extends { now: number }>(ask: () => Promise<R>): Promise<
 /** The server's clock now (ms), as the room's answers put it: what 龙门广场舞's song and its taps go by */
 export const squadServerNow = () => Date.now() + off;
 
-/** 开 a mode from 玩点什么: 玩点什么 shut, the room as it is then, and the mode's own card open */
+/** 开 a mode from 「玩」 (a match: waiting for people, you its initiator): the room as it is then, and the mode's own card open */
 export async function squadOpenMode(kind: SquadModeKind) {
   await timed(() => squadApi.mode(kind));
   const r = await loadSquadRoom();
-  if (r?.mode) modeAsked.set(r.mode.at);
+  if (r?.mode) askedNow(r.mode.at);
   if (r?.mode) modeCard.set(r.mode.at);
   return r;
 }
 
 /**
- * 加入 the mode playing (into), its card open; or 不跳了，去围观, the card left open to watch. Either way, not asked
- * to join it again
+ * 加入 the mode playing (into; a match waiting: 准备; a round playing: 下一局算我), its card open; or out (不跳了，
+ * 去围观; a match's 不玩了), the card left open. Either way, not asked to join it again.
  */
 export async function squadModeIn(into: boolean) {
-  const res = await timed(() => squadApi.modeIn(into));
+  await timed(() => squadApi.modeIn(into));
   danceJudge.set(null);
   const r = await loadSquadRoom();
-  if (r?.mode) modeAsked.set(r.mode.at);
-  // in a quiz, one who joins answers from the next question on
-  if (into && r?.mode?.kind === "quiz") quizPicks.set({ ...picksOf(r.mode.at), joinedAt: res.now });
-  if (into) {
-    if (r?.mode) modeCard.set(r.mode.at);
-  }
+  if (r?.mode) askedNow(r.mode.at);
+  if (into && r?.mode) modeCard.set(r.mode.at);
+  return r;
+}
+
+/** 开始, by a match's initiator: the room as it is then, the card open on the round */
+export async function squadStartMatch() {
+  await timed(() => squadApi.start());
+  const r = await loadSquadRoom();
+  if (r?.mode) modeCard.set(r.mode.at);
   return r;
 }
 
@@ -790,7 +840,7 @@ export const squadDanceSong = () => timed(() => squadApi.song());
 export async function squadGiftPass() {
   const r = room.get();
   const mode = r?.mode;
-  if (!r || mode?.kind !== "gift") return null;
+  if (!r || mode?.kind !== "gift" || mode.wait) return null;
   const at = squadServerNow();
   const i = mode.rounds.findLastIndex((x) => x.at <= at);
   const round = mode.rounds[i];
@@ -815,7 +865,7 @@ let raceTimer = 0;
 function ownLane(add: { tap?: [number, number]; jump?: number }) {
   const r = room.get();
   const mode = r?.mode;
-  if (!r || mode?.kind !== "race") return;
+  if (!r || mode?.kind !== "race" || mode.wait) return;
   const lanes = mode.lanes.map((l) =>
     l.h === r.you ? { ...l, taps: add.tap ? [...l.taps, add.tap] : l.taps, jumps: add.jump === undefined ? l.jumps : [...l.jumps, add.jump] } : l,
   );
@@ -899,10 +949,10 @@ export const squadQuizAsk = (n: number) => timed(() => squadApi.question(n));
  */
 export async function squadQuizAnswer(n: number, pick: number) {
   const mode = room.get()?.mode;
-  if (mode?.kind !== "quiz" || picksOf(mode.at).picks[n]) return null;
+  if (mode?.kind !== "quiz" || mode.wait || picksOf(mode.begun).picks[n]) return null;
   const at = squadServerNow();
   const set = (p: QuizPick | null) => {
-    const was = picksOf(mode.at);
+    const was = picksOf(mode.begun);
     const picks = { ...was.picks };
     if (p) picks[n] = p;
     else delete picks[n];
@@ -948,7 +998,7 @@ export async function sayInSquad(p: number, to?: number): Promise<{ sent: boolea
   const r = room.get();
   if (res.sent && r) {
     showLine(r, r.you, p, to);
-    if (to === undefined) keepRecent(p);
+    if (to === undefined && p !== SHOUT) keepRecent(p);
     const m = to === undefined ? undefined : r.members.find((x) => x.h === to);
     if (m && m.strategy !== null && (p === TO.change || p === TO.giveUp)) asked.set(m.h, { s: m.strategy, at: Date.now() });
     // answered what was said to you

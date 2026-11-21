@@ -100,8 +100,8 @@ export default function SquadTalk({
 export function SayTab({ room, onDone, docked = false }: { room: SquadRoom; onDone: () => void; docked?: boolean }) {
   // 听歌's row, while you are in 卫戍的一起听
   const music = room.listen?.you === "in";
-  // 对 TA 说 is said from a teammate's card
-  const rows = PHRASE_ROWS.filter(([r]) => r !== "to" && (r !== "music" || music));
+  // 对 TA 说 is said from a teammate's card, 喊一声 from a match's
+  const rows = PHRASE_ROWS.filter(([r]) => r !== "to" && r !== "game" && (r !== "music" || music));
   const first: PhraseRow = room.state === "go" ? "fight" : "team";
   const [row, setRow] = useState<PhraseRow>(first);
   useEffect(() => setRow(first), [first]);

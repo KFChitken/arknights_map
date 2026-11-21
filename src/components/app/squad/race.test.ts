@@ -75,6 +75,9 @@ const race = (more: Partial<RaceMode> = {}): RaceMode => ({
   kind: "race",
   by: 1,
   at: NOW - RACE_LEAD_MS,
+  begun: NOW - RACE_LEAD_MS,
+  played: 0,
+  next: [],
   in: [
     { h: 1, combo: 0 },
     { h: 2, combo: 0 },
@@ -105,7 +108,6 @@ function view(r: SquadRoom, now: number, rate = 0) {
       onJump: nothing,
       onJoin: nothing,
       onLeave: nothing,
-      onAgain: nothing,
     }),
   );
 }
@@ -199,18 +201,18 @@ describe("企鹅物流急件赛's card", () => {
     expect(raceTip(raceRun(m, NOW + met + 2_000), 0)).toBeNull();
   });
 
-  it("asks one watching to join for the next race, and tells one who asked they are in it", () => {
+  it("leaves one not in the round to watch it (下一局算我), and tells one who asked they are in the next", () => {
     const m = race({ in: [{ h: 2, combo: 0 }], by: 2, lanes: [2, -100, -101, -102].map((h) => ({ h, taps: [], jumps: [] })) });
     const watching = view(room({ mode: m }), NOW + 3_000);
-    expect(watching).toContain("你在围观这一场，加入以后下一场开跑时就在里面");
-    expect(watching).toContain(">下一场加入</button>");
+    expect(watching).toContain(">这局先围观 · 下一局算我</button>");
     expect(watching).toMatch(/<b>跑在最前面的离大帝还有 \d+ m<\/b>/);
-    const asked = view(room({ mode: { ...m, in: [{ h: 2, combo: 0 }, { h: 1, combo: 0 }] } }), NOW + 3_000);
-    expect(asked).toContain("下一场开跑时你就在里面");
-    expect(asked).toContain("不跑了，去围观");
+    const asked = view(room({ mode: { ...m, next: [1] } }), NOW + 3_000);
+    expect(asked).toContain('<p class="qline">排进下一局了：这局跑完你就在里面</p>');
+    expect(asked).not.toContain("下一局算我</button>");
+    expect(asked).not.toContain("不跑了，去围观");
   });
 
-  it("waits for the server's word at the end, then gives its order, times, the crown, and 再来一场", () => {
+  it("waits for the server's word at the end, then gives its order, times and the crown (再来一局 is its initiator's, once it waits again)", () => {
     const m = race({ lanes: [{ h: 1, taps: flatOut(NOW), jumps: [] }, { h: 2, taps: [], jumps: [] }, { h: -100, taps: [], jumps: [] }, { h: -101, taps: [], jumps: [] }] });
     expect(view(room({ mode: m }), NOW + RACE_MAX_MS + 100)).toContain("<b>终点核对中…</b>");
     const end: RaceEnd = { at: NOW + RACE_MAX_MS, order: [0, 2, 3, 1], times: [14_600, null, 18_900, 19_400], metres: [300, 210, 300, 300] };
@@ -221,7 +223,7 @@ describe("企鹅物流急件赛's card", () => {
     expect(html).toContain('<span class="pn">第 1</span>');
     expect(html).toContain('<span class="nm">你</span><em class="cr">小冠</em><b>14.6 秒</b>');
     expect(html).toContain('<span class="nm">企鹅物流</span><b>没跑完 · 210 m</b>');
-    expect(html).toContain('<button type="button" class="again">再来一场</button>');
+    expect(html).not.toContain("再来一场");
     expect(html).toContain('<svg class="crown"');
     // the server's order, whatever this page's own run says
     const other: RaceEnd = { ...end, order: [2, 0, 3, 1] };

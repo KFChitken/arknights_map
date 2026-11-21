@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SquadRoom } from "@/lib/squad";
+import type { LobbyMode } from "@/lib/squadMode";
 import {
   RACE_CROWN_MS,
   RACE_JUMP_MS,
@@ -23,7 +24,7 @@ import { listenInvites, listenMembers, listenNow, listenRooms, sessions, siteSet
 import { loadSettings } from "@/lib/server/siteSettings";
 import { loadSongs } from "@/lib/server/songs";
 import { flushSaysNow, forgetSquad } from "@/lib/server/squad";
-import { forgetDanceBeats, openMode, settleRaceRoom, sweepModes } from "@/lib/server/squadModes";
+import { forgetDanceBeats, openMode, settleRaceRoom, startMatch, sweepModes } from "@/lib/server/squadModes";
 import { forgetRace } from "@/lib/server/squadRace";
 import { flushRacesNow } from "@/lib/server/squad";
 import { POST } from "./route";
@@ -164,32 +165,48 @@ const setData = (roomId: string, d: RaceData) => db.update(squadRooms).set({ mod
 const first = () => 0;
 const handleOf = (room: SquadRoom, name: string) => room.members.find((m) => m.name === name)!.h;
 const headOf = async (u: Pick<User, "id">, name: string) => (await viewOf(u)).members.find((m) => m.name === name)!.head;
+/** A race picked by its initiator, those given ready, and started (the seed 0) */
+async function play(u: Pick<User, "id">, ready: Pick<User, "id">[] = []) {
+  await openMode(u, { kind: "race" }, clock, first);
+  for (const r of ready) expect((await post(r, "modein", { in: true })).status).toBe(200);
+  await startMatch(u, clock, first);
+}
 /** 加油 at full rate from the start to its end: two every quarter second */
 const flatOut = (start: number) => Array.from({ length: 120 }, (_, k): [number, number] => [start + k * 250, 2]);
 
 describe("企鹅物流急件赛", () => {
-  it("lines up its opener, the room's 人机 and its own, with its obstacles and seed; starts three seconds on", async () => {
+  it("lines up its initiator, those ready as they readied, the room's 人机 and its own, with its obstacles and seed; starts three seconds on", async () => {
     const { host, a, b } = await cast();
-    const t0 = clock;
     expect((await post(host, "bot", { do: "add" })).status).toBe(200);
     await openMode(a, { kind: "race" }, clock, first);
     const v = await viewOf(b);
-    const aH = handleOf(v, "a");
+    const [aH, bH] = [handleOf(v, "a"), handleOf(v, "b")];
     const bot = v.members.find((m) => m.bot)!.h;
-    const mode = v.mode as RaceMode;
-    expect(mode).toMatchObject({ kind: "race", by: aH, in: [{ h: aH, combo: 0 }], start: t0 + RACE_LEAD_MS, seed: 0 });
-    expect(mode.lanes.map((l) => l.h)).toEqual([aH, bot, -100, -101]);
+    // waiting for people: no race yet
+    expect(v.mode).toMatchObject({ kind: "race", wait: true, by: aH, in: [{ h: aH, combo: 0 }], played: 0 });
+    expect(v.mode).not.toHaveProperty("lanes");
+    expect((await post(b, "modein", { in: true })).status).toBe(200);
+    const t0 = clock + 2_000;
+    at(t0);
+    await startMatch(a, clock, first);
+    const mode = await raceOf(b);
+    expect(mode).toMatchObject({ kind: "race", by: aH, begun: t0, played: 0, next: [], start: t0 + RACE_LEAD_MS, seed: 0 });
+    expect(mode.in.map((m) => m.h).sort()).toEqual([aH, bH].sort());
+    expect(mode.lanes.map((l) => l.h)).toEqual([aH, bH, bot, -100]);
     expect(mode.obs.map((o) => o.k).sort()).toEqual(["bar", "potion", "slug", "water", "water"]);
     expect(mode.until).toBe(t0 + RACE_LEAD_MS + RACE_MAX_MS + RACE_RESULT_MS);
     expect(mode).not.toHaveProperty("end");
-    // b in before it starts: a lane of the mode's own 人机
-    expect((await post(b, "modein", { in: true })).status).toBe(200);
-    expect((await raceOf(b)).lanes.map((l) => l.h)).toEqual([aH, bot, handleOf(v, "b"), -101]);
+    // the host in after its start, even before it runs: no lane, in the next one
+    expect((await post(host, "modein", { in: true })).status).toBe(200);
+    const later = await raceOf(b);
+    expect(later.lanes.map((l) => l.h)).toEqual([aH, bH, bot, -100]);
+    expect(later.next).toEqual([1]);
+    expect(later.in.map((m) => m.h)).not.toContain(1);
   });
 
   it("takes 加油 counts and 跳s from those in it on the server's clock, tells the room each quarter second, refuses the rest", async () => {
     const { host, a, room } = await cast();
-    await openMode(a, { kind: "race" }, clock, first);
+    await play(a);
     const aH = handleOf(await viewOf(a), "a");
     const { start } = await raceOf(a);
     expect(await post(a, "run", { tap: 3 })).toMatchObject({ status: 409, body: { error: "还没开跑。" } });
@@ -216,10 +233,9 @@ describe("企鹅物流急件赛", () => {
     expect(await post(host, "run", { tap: 1 })).toMatchObject({ status: 409, body: { error: "先加入才能跑。" } });
   });
 
-  it("settles the order once all are in, the first wearing the crown with two or more playing, and ends after the results", async () => {
+  it("settles the order once all are in, the first wearing the crown with two or more playing, and waits again after the results", async () => {
     const { a, b, room } = await cast();
-    await openMode(a, { kind: "race" }, clock, first);
-    expect((await post(b, "modein", { in: true })).status).toBe(200);
+    await play(a, [b]);
     const v = await viewOf(a);
     const [aH, bH] = [handleOf(v, "a"), handleOf(v, "b")];
     const data = await dataOf(room.id);
@@ -232,7 +248,7 @@ describe("企鹅物流急件赛", () => {
     expect(data.lanes[1].h).toBe(bH);
     expect(run.done[1]).toBeNull();
     at(data.start + 10_000);
-    expect(await settleRaceRoom(room.id, clock)).toEqual({ over: false });
+    expect(await settleRaceRoom(room.id, clock)).toEqual({ over: false, ended: false });
     expect((await raceOf(a)).end).toBeUndefined();
     const heard = told(b);
     at(data.start + RACE_MAX_MS + 100);
@@ -247,49 +263,53 @@ describe("企鹅物流急件赛", () => {
     expect(await headOf(a, "b")).toBeUndefined();
     // over: no more
     expect(await post(a, "run", { tap: 1 })).toMatchObject({ status: 409 });
-    // its end
+    // its end: waiting again, both still ready, a its initiator, a round played
     at(ended.until + 1);
     expect(await sweepModes(clock)).toBe(1);
-    expect((await viewOf(a)).mode).toBeNull();
+    const back = (await viewOf(a)).mode as LobbyMode;
+    expect(back).toMatchObject({ kind: "race", wait: true, by: aH, played: 1 });
+    expect(back.in.map((m) => m.h)).toEqual([aH, bH]);
     expect(await viewOf(a)).not.toHaveProperty("modeAgain");
-    // its opener opens the next at once
-    expect((await post(a, "mode", { kind: "race" })).status).toBe(200);
-    void bH;
+    // 再来一局: its initiator starts the next at once
+    expect((await post(a, "start")).status).toBe(200);
+    expect(((await raceOf(a)) as RaceMode).lanes.map((l) => l.h).slice(0, 2)).toEqual([aH, bH]);
   });
 
-  it("puts one coming in during it into the next one, and a settled race gives way to the next at once (再来一场)", async () => {
+  it("puts one coming in during it into the next round; the results over, it waits again with them ready for 再来一局", async () => {
     const { host, a, b, room } = await cast();
-    await openMode(a, { kind: "race" }, clock, first);
+    await play(a);
     const v = await viewOf(a);
     const [aH, bH] = [handleOf(v, "a"), handleOf(v, "b")];
     const data = await dataOf(room.id);
     at(data.start + 1_000);
-    // b comes in during it: no lane, in for the next
+    // b comes in during it: no lane, in the next one
     expect((await post(b, "modein", { in: true })).status).toBe(200);
     expect((await raceOf(b)).lanes.map((l) => l.h)).toEqual([aH, -100, -101, -102]);
-    expect((await raceOf(b)).in.map((m) => m.h).sort()).toEqual([aH, bH].sort());
-    // over and settled: the host opens the next while its results show; a (ran it) and b (asked) are in it
+    expect((await raceOf(b)).in.map((m) => m.h)).toEqual([aH]);
+    expect((await raceOf(b)).next).toEqual([bH]);
+    // over and settled: no new race while its results show
     at(data.start + RACE_MAX_MS + 100);
-    await settleRaceRoom(room.id, clock);
-    expect((await post(host, "mode", { kind: "race" })).status).toBe(200);
+    expect(await settleRaceRoom(room.id, clock)).toEqual({ over: false, ended: false });
+    expect(await post(host, "mode", { kind: "race" })).toMatchObject({ status: 409, body: { error: "正在玩一个，玩完才能开下一个。" } });
+    // its results over: waiting, a and b ready; only a starts it
+    at(data.start + RACE_MAX_MS + RACE_RESULT_MS + 100);
+    expect(await settleRaceRoom(room.id, clock)).toEqual({ over: true, ended: true });
+    expect(((await viewOf(a)).mode as LobbyMode).in.map((m) => m.h)).toEqual([aH, bH]);
+    expect(await post(b, "start")).toMatchObject({ status: 409, body: { error: "只有发起人能点开始。" } });
+    expect((await post(a, "start")).status).toBe(200);
+    expect(await post(a, "start")).toMatchObject({ status: 409, body: { error: "已经开始了。" } });
     const next = await raceOf(a);
-    expect(next.lanes.map((l) => l.h).slice(0, 3).sort()).toEqual([1, aH, bH].sort());
-    expect(next.in.map((m) => m.h).sort()).toEqual([1, aH, bH].sort());
-    // the next, ended by the sweep: b, who asked during it, is in nothing after it
-    const d2 = await dataOf(room.id);
-    at(d2.start + RACE_MAX_MS + RACE_RESULT_MS + 100);
-    await sweepModes(clock);
-    await sweepModes(clock);
-    expect((await viewOf(a)).mode).toBeNull();
+    expect(next.lanes.map((l) => l.h).slice(0, 2)).toEqual([aH, bH]);
+    expect(next.played).toBe(1);
   });
 
   it("puts no crown on one alone, gives a lane back to a 人机 when one goes out before the start, and never lets the crown be thrown", async () => {
     const { a, b, room } = await cast();
-    await openMode(a, { kind: "race" }, clock, first);
+    await play(a, [b]);
     const aH = handleOf(await viewOf(a), "a");
-    expect((await post(b, "modein", { in: true })).status).toBe(200);
+    expect((await raceOf(a)).lanes.map((l) => l.h)).toEqual([aH, handleOf(await viewOf(a), "b"), -100, -101]);
     expect((await post(b, "modein", { in: false })).status).toBe(200);
-    expect((await raceOf(a)).lanes.map((l) => l.h)).toEqual([aH, -100, -101, -102]);
+    expect((await raceOf(a)).lanes.map((l) => l.h)).toEqual([aH, -102, -100, -101]);
     const data = await dataOf(room.id);
     data.lanes[0].taps = flatOut(data.start);
     await setData(room.id, data);

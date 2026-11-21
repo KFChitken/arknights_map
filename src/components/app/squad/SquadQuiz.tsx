@@ -197,6 +197,7 @@ export function QuizView({
   still?: boolean;
   onClose: () => void;
   onPick: (n: number, pick: number) => void;
+  /** 下一局算我: one not in this round asks for the next */
   onJoin: () => void;
   onLeave: () => void;
   onSound: () => void;
@@ -204,7 +205,9 @@ export function QuizView({
   const t = T.squad.quiz;
   const phase = quizPhase(mode, now);
   const me = mode.in.some((m) => m.h === room.you);
-  const mine = picks?.at === mode.at ? picks : null;
+  const queued = !me && mode.next.includes(room.you);
+  // your answers in this round (a match plays round after round from one start)
+  const mine = picks?.at === mode.begun ? picks : null;
   const head =
     phase.at === "lead"
       ? fmt(t.startsIn, { s: Math.max(1, Math.ceil((phase.q.at - now) / 1000)) })
@@ -236,13 +239,13 @@ export function QuizView({
       {phase.at === "results" ? (
         <Results room={room} mode={mode} />
       ) : (
-        <Question room={room} mode={mode} phase={phase} now={now} ask={asks[phase.q.n]} pick={mine?.picks[phase.q.n]} late={me && (mine?.joinedAt ?? 0) > phase.q.at} me={me} sound={sound} busy={busy} still={still} onPick={onPick} onSound={onSound} />
+        <Question room={room} mode={mode} phase={phase} now={now} ask={asks[phase.q.n]} pick={mine?.picks[phase.q.n]} me={me} sound={sound} busy={busy} still={still} onPick={onPick} onSound={onSound} />
       )}
-      {!me && phase.at !== "results" && (
+      {queued && phase.at !== "results" && <p className="qline">{T.squad.lobby.queued}</p>}
+      {!me && !queued && phase.at !== "results" && (
         <div className="watch">
-          <span>{t.watching}</span>
           <button type="button" disabled={busy} onClick={onJoin}>
-            {t.join}
+            {T.squad.lobby.late}
           </button>
         </div>
       )}
@@ -268,7 +271,6 @@ function Question({
   now,
   ask,
   pick,
-  late,
   me,
   sound,
   busy,
@@ -282,8 +284,6 @@ function Question({
   now: number;
   ask: QuizAsk | undefined;
   pick: QuizPick | undefined;
-  /** Joined during this question: answers from the next */
-  late: boolean;
   me: boolean;
   sound: QuizSound | null;
   busy: boolean;
@@ -296,7 +296,7 @@ function Question({
   const answer = q.answer ?? pick?.answer;
   const shown = phase.at !== "lead";
   const options = shown ? (ask?.options ?? q.options) : undefined;
-  const open = phase.at === "ask" && q.answer === undefined && me && !late && !pick;
+  const open = phase.at === "ask" && q.answer === undefined && me && !pick;
   const res = shown ? resultLine(room, q, pick, now) : null;
   const next = mode.questions[q.n + 1];
   const decided = q.answer !== undefined || now >= q.ends;
@@ -341,9 +341,9 @@ function Question({
           })}
         </div>
       </div>
-      {(res || after || late) && (
+      {(res || after) && (
         <div className="res">
-          {late && !res ? <span>{t.joining}</span> : res ? <span key={`${q.n}:${res.text}`} className={res.tone || undefined}>{res.text}</span> : <span />}
+          {res ? <span key={`${q.n}:${res.text}`} className={res.tone || undefined}>{res.text}</span> : <span />}
           {after && <small>{after}</small>}
         </div>
       )}
@@ -447,11 +447,12 @@ export function useQuizAsks(mode: QuizMode | null, now: number, failed: (text: s
   const looked = useRef(new Set<string>());
   const fail = useRef(failed);
   fail.current = failed;
-  const got = mode && asks.at === mode.at ? asks.got : NO_ASKS;
+  // by round: a match plays round after round from one start (at), each its own questions (begun)
+  const got = mode && asks.at === mode.begun ? asks.got : NO_ASKS;
   useEffect(() => {
     if (!mode) return;
     for (const q of mode.questions) {
-      const key = `${mode.at}:${q.n}`;
+      const key = `${mode.begun}:${q.n}`;
       const tries = asking.current.get(key) ?? 0;
       if (!got[q.n] && tries >= 0 && tries < ASK_TRIES && now >= q.at - QUIZ_FETCH_MS + ASK_AFTER_MS && now < q.ends + QUIZ_REVEAL_MS) {
         // -1: on its way
@@ -459,7 +460,7 @@ export function useQuizAsks(mode: QuizMode | null, now: number, failed: (text: s
         squadQuizAsk(q.n)
           .then((a) => {
             asking.current.delete(key);
-            setAsks((was) => ({ at: mode.at, got: { ...(was.at === mode.at ? was.got : {}), [q.n]: a } }));
+            setAsks((was) => ({ at: mode.begun, got: { ...(was.at === mode.begun ? was.got : {}), [q.n]: a } }));
           })
           .catch((e: unknown) => {
             window.setTimeout(() => asking.current.set(key, tries + 1), ASK_AGAIN_MS);
@@ -484,7 +485,7 @@ export default function SquadQuiz() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [still] = useState(() => typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches));
-  const mode = room?.mode?.kind === "quiz" && room.mode.at === openAt ? room.mode : null;
+  const mode = room?.mode?.kind === "quiz" && !room.mode.wait && room.mode.at === openAt ? room.mode : null;
   const open = Boolean(mode);
   const got = useQuizAsks(mode, now, setMsg);
 
