@@ -219,6 +219,10 @@ export const zh = {
       listen: "听歌",
       listenNow: "在听",
       listenNowLabel: "听歌，正在听《{name}》",
+      /** 听歌's entry while the song is asked for, or waits for more of it to come: not sounding yet */
+      listenBuffering: "缓冲中",
+      listenBufferingLabel: "听歌，正在缓冲《{name}》",
+      listenBufferingSong: "缓冲中《{name}》",
       listenNew: "新",
       listenIdle: "方舟的歌，边听边逛地图",
       listenSong: "在听《{name}》",

@@ -42,11 +42,28 @@ const asIs: Tap = (fn) => fn;
 const peopleOf = (room: ListenRoom) =>
   room.members.filter((m) => m.state === "in").sort((a, b) => Number(b.host) - Number(a.host) || a.h - b.h);
 
-/** The song on and whether it plays, as the handles and the little bar show it; to the room's host, the 点歌 waiting */
+/**
+ * The song on and whether it plays, as the handles and the little bar show it (sounding: not asked for or waiting for
+ * more of it, so its record turns); to the room's host, the 点歌 waiting
+ */
 function useSong() {
   const v = useListenPlayer();
   const room = useListenRoom();
-  return { track: v.track, on: v.status === "playing" || v.status === "starting", room, asks: room?.host ? room.requests.length : 0 };
+  const on = v.status === "playing" || v.status === "starting";
+  return { track: v.track, on, sounding: v.status === "playing" && !v.buffering, room, asks: room?.host ? room.requests.length : 0 };
+}
+
+/**
+ * After the song on a handle, while it does not sound yet: · 缓冲中, kept whole as a long song's name is cut (the
+ * button's text read out is its label)
+ */
+function Buffering({ on }: { on: boolean }) {
+  if (!on) return null;
+  return (
+    <span className="lmini-buf" aria-hidden="true">
+      · {T.map.bar.listenBuffering}
+    </span>
+  );
 }
 
 /** A small record, turning while the song plays, the song's cover its label; edged in teal in a room */
@@ -68,7 +85,7 @@ export function MiniDisc({ file, size, go, room }: { file: string | undefined; s
  * for the room's host (not a guest's); a thin line of how far the song is, teal in a room. tap: what each tap goes through.
  */
 export function MiniStrip({ onOpen, tap = asIs }: { onOpen: () => void; tap?: Tap }) {
-  const { track: t, on, room, asks } = useSong();
+  const { track: t, on, sounding, room, asks } = useSong();
   const at = useListenSecond();
   const hasNext = useListenHasNext();
   const [busy, setBusy] = useState(false);
@@ -87,9 +104,12 @@ export function MiniStrip({ onOpen, tap = asIs }: { onOpen: () => void; tap?: Ta
     <div className={`lmini${room ? " room-on" : ""}${grow ? " grow" : ""}`}>
       <div className="lmini-row">
         <button type="button" className="lmini-open" aria-label={withAsks(fmt(T.listen.mini.open, { name: t.name }), asks)} onClick={tap(onOpen)}>
-          <MiniDisc file={t.album.cover} size={40} go={on} room={Boolean(room)} />
+          <MiniDisc file={t.album.cover} size={40} go={sounding} room={Boolean(room)} />
           <span className="lmini-tt" aria-hidden="true">
-            <b>{t.name}</b>
+            <b>
+              {t.name}
+              {on && !sounding && ` · ${T.map.bar.listenBuffering}`}
+            </b>
             <small>
               {room ? (
                 <>
@@ -145,7 +165,7 @@ export function MiniStrip({ onOpen, tap = asIs }: { onOpen: () => void; tap?: Ta
  * bar's edge left out under them, chrome.css): tucked, the turning record, the song and ⌃; pulled out, only ⌄
  */
 export function FloatMiniTab({ out }: { out: boolean }) {
-  const { track: t, on, room, asks } = useSong();
+  const { track: t, on, sounding, room, asks } = useSong();
   if (!t) return null;
   return (
     <span className={`lmini-tabw${out ? " out" : ""}${room ? " room-on" : ""}`} data-chrome-bottom>
@@ -161,8 +181,9 @@ export function FloatMiniTab({ out }: { out: boolean }) {
           <ChevIcon dir="down" />
         ) : (
           <>
-            <MiniDisc file={t.album.cover} size={16} go={on} room={Boolean(room)} />
+            <MiniDisc file={t.album.cover} size={16} go={sounding} room={Boolean(room)} />
             <span className="tt">{t.name}</span>
+            <Buffering on={on && !sounding} />
             <ChevIcon dir="up" />
           </>
         )}
@@ -179,7 +200,7 @@ export function FloatMiniTab({ out }: { out: boolean }) {
  * shows Amap's mark); its taps go through the drawer's swipe
  */
 export function DrawerMiniPill({ out, tap }: { out: boolean; tap: Tap }) {
-  const { track: t, on, room, asks } = useSong();
+  const { track: t, on, sounding, room, asks } = useSong();
   if (!t) return null;
   return (
     <button
@@ -198,10 +219,11 @@ export function DrawerMiniPill({ out, tap }: { out: boolean; tap: Tap }) {
         </>
       ) : (
         <>
-          <MiniDisc file={t.album.cover} size={14} go={on} room={Boolean(room)} />
+          <MiniDisc file={t.album.cover} size={14} go={sounding} room={Boolean(room)} />
           <span className="tt" aria-hidden="true">
             {t.name}
           </span>
+          <Buffering on={on && !sounding} />
           <ChevIcon dir="up" />
           <AsksDot n={asks} />
         </>
@@ -210,9 +232,12 @@ export function DrawerMiniPill({ out, tap }: { out: boolean; tap: Tap }) {
   );
 }
 
-/** 游戏风's handle: a round button between 触须之交 and 我的蟑螂, the turning record in it and the song under it */
+/**
+ * 游戏风's handle: a round button between 触须之交 and 我的蟑螂, the turning record in it and the song under it (缓冲中
+ * while it does not sound yet)
+ */
 export function HudMiniRound({ out }: { out: boolean }) {
-  const { track: t, on, room, asks } = useSong();
+  const { track: t, on, sounding, room, asks } = useSong();
   if (!t) return null;
   return (
     <span className="rb lmini-rb">
@@ -227,13 +252,13 @@ export function HudMiniRound({ out }: { out: boolean }) {
           <ChevIcon dir="down" />
         ) : (
           <>
-            <MiniDisc file={t.album.cover} size={30} go={on} room={Boolean(room)} />
+            <MiniDisc file={t.album.cover} size={30} go={sounding} room={Boolean(room)} />
             <AsksDot n={asks} />
           </>
         )}
       </button>
       <span className="lbl" aria-hidden="true">
-        {out ? T.listen.mini.tuckWord : t.name}
+        {out ? T.listen.mini.tuckWord : on && !sounding ? T.map.bar.listenBuffering : t.name}
       </span>
     </span>
   );

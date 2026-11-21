@@ -372,7 +372,7 @@ function ListenRound({ listen }: { listen: NonNullable<ChromeProps["listen"]> })
         onClick={listen.onToggle}
         data-listen-anchor="right"
       >
-        <ListenIcon on={e.on} size={22} />
+        <ListenIcon on={e.on} still={e.buffering} size={22} />
         {e.asks > 0 ? (
           <AsksDot n={e.asks} />
         ) : (

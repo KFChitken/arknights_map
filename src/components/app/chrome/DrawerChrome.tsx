@@ -431,7 +431,7 @@ function ListenChip({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) 
       data-listen-anchor="up"
     >
       <span className="ico">
-        <ListenIcon on={e.on} size={20} />
+        <ListenIcon on={e.on} still={e.buffering} size={20} />
       </span>
       <span aria-hidden="true">{listenWord(e)}</span>
       {e.asks > 0 ? (
@@ -483,7 +483,7 @@ function ListenCard({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) 
       data-listen-anchor="right"
     >
       <span className="lico">
-        <ListenIcon on={e.on} size={26} />
+        <ListenIcon on={e.on} still={e.buffering} size={26} />
       </span>
       <span className="tx" aria-hidden="true">
         <b>
@@ -498,7 +498,7 @@ function ListenCard({ listen }: { listen: NonNullable<ChromeProps["listen"]> }) 
           {e.together !== null
             ? fmt(T.listen.mini.together, { n: e.together })
             : e.on && e.track
-              ? fmt(T.map.bar.listenSong, { name: e.track.name })
+              ? fmt(e.buffering ? T.map.bar.listenBufferingSong : T.map.bar.listenSong, { name: e.track.name })
               : T.map.bar.listenIdle}
         </small>
       </span>

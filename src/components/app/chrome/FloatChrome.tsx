@@ -240,7 +240,7 @@ function ListenTile({ listen, folded }: { listen: NonNullable<ChromeProps["liste
       onClick={listen.onToggle}
       data-listen-anchor={folded ? undefined : "right"}
     >
-      <ListenIcon on={e.on} size={26} />
+      <ListenIcon on={e.on} still={e.buffering} size={26} />
       <small aria-hidden="true">{listenWord(e)}</small>
       {e.asks > 0 ? (
         <AsksDot n={e.asks} />

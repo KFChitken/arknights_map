@@ -1186,6 +1186,28 @@ export function onListenSaid(fn: (text: string) => void) {
   };
 }
 
+/** The player's panel open on the map page (MapApp.tsx): why a song was refused or given up shows in it while it is */
+let panelShown = false;
+export function setListenPanelOpen(open: boolean) {
+  panelShown = open;
+}
+/** The last problem seen (its song, code and words), said once over the map while the panel was shut; forgotten once a song sounds */
+let problemSeen: string | null = null;
+// A song refused or given up (player.problem) with the panel shut: said once over the map, as nothing else shows it.
+// What the server asks first (to sign in, the age question, the privacy policy) is no problem: the map page asks it.
+player.on(() => {
+  const p = player.get();
+  if (p.status === "playing" && !p.buffering) {
+    problemSeen = null;
+    return;
+  }
+  if (!p.problem) return;
+  const key = `${p.track?.id ?? ""}\n${p.problem.code ?? ""}\n${p.problem.message}`;
+  if (key === problemSeen) return;
+  problemSeen = key;
+  if (!panelShown) saidTo?.(p.problem.message);
+});
+
 let introHere: ListenIntro | null = null;
 function readIntro(): ListenIntro {
   if (introHere) return introHere;
@@ -2784,6 +2806,8 @@ export function forgetListening() {
   songsText = "";
   songsAsking = false;
   introHere = null;
+  panelShown = false;
+  problemSeen = null;
   unlocked = false;
   selfPaused = false;
   catching = false;

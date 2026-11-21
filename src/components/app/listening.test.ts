@@ -39,6 +39,7 @@ import {
   playFromUpNext,
   playNext,
   setFav,
+  setListenPanelOpen,
   setLite,
   setShuffle,
   shufflePlay,
@@ -642,6 +643,63 @@ const answerRoom = (op: string, r: () => ListenRoom | null) => {
 };
 const tick = (ms: number) => vi.advanceTimersByTimeAsync(ms);
 const silence = /^data:audio\/wav;base64,/;
+
+describe("听歌 with its player shut", () => {
+  const FULL = "听歌的人有点多，过几分钟再来。";
+  afterEach(() => setListenPanelOpen(false));
+
+  it("says why a song was refused over the map, once: not again for the same refusal, but again once a song has played", async () => {
+    playAnswer = refusing(LISTEN_FULL, FULL);
+    playTrack(track("s1"));
+    await settle();
+    expect(listenPlayerNow()).toMatchObject({ problem: { code: LISTEN_FULL } });
+    expect(said).toEqual([FULL]);
+    // tapped again, refused the same way: nothing more said
+    playTrack(track("s2"));
+    await settle();
+    expect(said).toEqual([FULL]);
+    // a song plays; refused after it, it is said again
+    playAnswer = played;
+    playTrack(track("s1"));
+    await settle();
+    expect(listenPlayerNow()).toMatchObject({ status: "playing", buffering: false });
+    playAnswer = refusing(LISTEN_FULL, FULL);
+    playTrack(track("s3"));
+    await settle();
+    expect(said).toEqual([FULL, FULL]);
+  });
+
+  it("says nothing while the player is open, as its panel shows it; shut after, the same refusal is not said either", async () => {
+    setListenPanelOpen(true);
+    playAnswer = refusing(LISTEN_FULL, FULL);
+    playTrack(track("s1"));
+    await settle();
+    expect(listenPlayerNow()).toMatchObject({ problem: { code: LISTEN_FULL, message: FULL } });
+    setListenPanelOpen(false);
+    playTrack(track("s2"));
+    await settle();
+    expect(said).toEqual([]);
+  });
+
+  it("says a song given up after it broke three times in a minute", async () => {
+    playTrack(track("s1"));
+    await settle();
+    for (let i = 0; i < 4; i++) {
+      audio().fail();
+      await settle();
+    }
+    expect(listenPlayerNow()).toMatchObject({ status: "paused", problem: { message: T.listen.broken } });
+    expect(said).toEqual([T.listen.broken]);
+  });
+
+  it("leaves signing in to the map page: nothing said", async () => {
+    playAnswer = () => ({ status: 401, json: { error: "先登录" } });
+    playTrack(track("s1"));
+    await settle();
+    expect(listenPlayerNow()).toMatchObject({ status: "idle", problem: null });
+    expect(said).toEqual([]);
+  });
+});
 
 describe("一起听 on the page", () => {
   beforeEach(() => {

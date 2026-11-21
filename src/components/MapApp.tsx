@@ -161,6 +161,7 @@ import {
   onListenSaid,
   openRoomWith,
   serverNow,
+  setListenPanelOpen,
   touchMember,
   useListenHasSong,
   useListenMiniOut,
@@ -5599,6 +5600,8 @@ export default function MapApp({
   useEffect(() => {
     if (listenOpen && discoOpen) prefetchDisco();
   }, [listenOpen, discoOpen]);
+  // the player's panel open: why a song was refused or given up shows in it; shut, the player says it over the map
+  useEffect(() => setListenPanelOpen(listenOpen && listenShown), [listenOpen, listenShown]);
   // 听歌's little bar, while a song is on and the player shut: tucked into the buttons along the bottom, or pulled out
   // of them (kept so on this device); not while a 蟑螂 is being placed or an owner's tool has the screen
   const listenSong = useListenHasSong();
