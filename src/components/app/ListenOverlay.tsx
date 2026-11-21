@@ -46,10 +46,10 @@ export default function ListenOverlay({
   card: ListenCard | null;
   /** 听歌's panel at 一起听, from the bubble where the entry is out of sight */
   onOpen: () => void;
-  /** Within the tap (it may start a song) */
-  onJoin: (invite: ListenInvite) => void;
+  /** Within the tap (it may start a song); done once the server has answered (the card goes, if in) */
+  onJoin: (invite: ListenInvite) => Promise<unknown>;
   onLater: (invite: ListenInvite) => void;
-  onJoinCall: (call: ListenCallItem) => void;
+  onJoinCall: (call: ListenCallItem) => Promise<unknown>;
   /** 不了 */
   onSkipCall: (call: ListenCallItem) => void;
   /** 先不换, or the card gone otherwise */
@@ -206,6 +206,20 @@ function Strip() {
 }
 
 /**
+ * A tap that goes in (一起听, 进去听, 换过去), within the tap as it may start a song: its buttons gray and 正在进… until the
+ * server answers (a slow network, not a dead button tapped again); in, the card goes, else its buttons come back
+ */
+function useJoining<A>(join: (a: A) => Promise<unknown>) {
+  const [joining, setJoining] = useState(false);
+  const go = (a: A) => {
+    if (joining) return;
+    setJoining(true);
+    void join(a).finally(() => setJoining(false));
+  };
+  return [joining, go] as const;
+}
+
+/**
  * The invitation that came: 一起听 goes in (asked first, when you are in a room already: 换过去 or 先不换); 下次吧
  * lets it be (the host sees 没来, as when it runs out). One to 卫戍的一起听 (squad) says so, and that not joining is fine.
  */
@@ -220,11 +234,12 @@ function InviteCard({
   invite: ListenInvite;
   ask: boolean;
   bottom: number;
-  onJoin: (invite: ListenInvite) => void;
+  onJoin: (invite: ListenInvite) => Promise<unknown>;
   onLater: (invite: ListenInvite) => void;
   onDismiss: () => void;
 }) {
   const [asking, setAsking] = useState(ask);
+  const [joining, join] = useJoining(onJoin);
   const who = invite.from.displayName;
   return (
     <div className="lm-invite" role="alert" style={{ bottom }}>
@@ -237,10 +252,10 @@ function InviteCard({
         <>
           <small>{T.listen.switchAsk}</small>
           <div className="lm-ib">
-            <button className="acc" onClick={() => onJoin(invite)}>
-              {T.listen.switchYes}
+            <button className="acc" disabled={joining} onClick={() => join(invite)}>
+              {joining ? T.listen.joining : T.listen.switchYes}
             </button>
-            <button className="dec" onClick={onDismiss}>
+            <button className="dec" disabled={joining} onClick={onDismiss}>
               {T.listen.switchNo}
             </button>
           </div>
@@ -249,10 +264,10 @@ function InviteCard({
         <>
           <small>{fmt(T.listen.inviteLine, { song: invite.song, rest: fmt(T.listen.inviteFor, { n: invite.n }) })}</small>
           <div className="lm-ib">
-            <button className="acc" onClick={() => (listenRoomNow() ? setAsking(true) : onJoin(invite))}>
-              {T.listen.join}
+            <button className="acc" disabled={joining} onClick={() => (listenRoomNow() ? setAsking(true) : join(invite))}>
+              {joining ? T.listen.joining : T.listen.join}
             </button>
-            <button className="dec" onClick={() => onLater(invite)}>
+            <button className="dec" disabled={joining} onClick={() => onLater(invite)}>
               {T.listen.later}
             </button>
           </div>
@@ -277,11 +292,12 @@ function CallCard({
   call: ListenCallItem;
   ask: boolean;
   bottom: number;
-  onJoin: (call: ListenCallItem) => void;
+  onJoin: (call: ListenCallItem) => Promise<unknown>;
   onSkip: (call: ListenCallItem) => void;
   onDismiss: () => void;
 }) {
   const [asking, setAsking] = useState(ask);
+  const [joining, join] = useJoining(onJoin);
   return (
     <div className="lm-invite call" role="alert" style={{ bottom }}>
       <div className="lm-ih">
@@ -293,10 +309,10 @@ function CallCard({
         <>
           <small>{T.listen.switchAsk}</small>
           <div className="lm-ib">
-            <button className="acc" onClick={() => onJoin(call)}>
-              {T.listen.switchYes}
+            <button className="acc" disabled={joining} onClick={() => join(call)}>
+              {joining ? T.listen.joining : T.listen.switchYes}
             </button>
-            <button className="dec" onClick={onDismiss}>
+            <button className="dec" disabled={joining} onClick={onDismiss}>
               {T.listen.switchNo}
             </button>
           </div>
@@ -305,10 +321,10 @@ function CallCard({
         <>
           <small>{callLine(call.listen)}</small>
           <div className="lm-ib">
-            <button className="acc" onClick={() => (listenRoomNow() ? setAsking(true) : onJoin(call))}>
-              {T.listen.call.join}
+            <button className="acc" disabled={joining} onClick={() => (listenRoomNow() ? setAsking(true) : join(call))}>
+              {joining ? T.listen.joining : T.listen.call.join}
             </button>
-            <button className="dec" onClick={() => onSkip(call)}>
+            <button className="dec" disabled={joining} onClick={() => onSkip(call)}>
               {T.listen.call.skip}
             </button>
           </div>

@@ -2545,8 +2545,9 @@ export default function MapApp({
   /** In at an invitation (its item id in 消息, li:…), from its card or 消息; within the tap, as it may start a song */
   const joinInvite = async (itemId: string) => {
     const ok = await joinAt(itemId.replace(/^li:/, ""));
-    setListenCard((c) => (c?.kind === "invite" && c.invite.id === itemId ? null : c));
+    // in: its card goes; not (said in a toast), it stays, its buttons back, until 下次吧 or it runs out
     if (ok) {
+      setListenCard((c) => (c?.kind === "invite" && c.invite.id === itemId ? null : c));
       showListenRoom();
       await worldRef.current!.markSeen([itemId]).catch(() => {});
     }
@@ -2562,8 +2563,9 @@ export default function MapApp({
   /** In at a 宣言一起听 (its item id in 消息, d:…), from its card, 消息 or 一起听; within the tap, as it may start a song */
   const joinCallAt = async (itemId: string) => {
     const ok = await joinCall(itemId.replace(/^d:/, ""));
-    setListenCard((c) => (c?.kind === "call" && c.call.id === itemId ? null : c));
+    // as an invitation's (joinInvite)
     if (ok) {
+      setListenCard((c) => (c?.kind === "call" && c.call.id === itemId ? null : c));
       showListenRoom();
       await worldRef.current!.markSeen([itemId]).catch(() => {});
     }
@@ -6308,9 +6310,9 @@ export default function MapApp({
           disco={discoOpen}
           card={listenCard}
           onOpen={showListenRoom}
-          onJoin={(i) => void joinInvite(i.id)}
+          onJoin={(i) => joinInvite(i.id)}
           onLater={(i) => void laterInvite(i.id)}
-          onJoinCall={(c) => void joinCallAt(c.id)}
+          onJoinCall={(c) => joinCallAt(c.id)}
           onSkipCall={(c) => void skipCall(c)}
           onDismiss={() => setListenCard(null)}
         />

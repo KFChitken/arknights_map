@@ -2019,6 +2019,8 @@ export const zh = {
     inviteFor: "30 分钟内有效 · 现在 {n} 人",
     inviteLine: "《{song}》 · {rest}",
     join: "一起听",
+    /** 一起听, 换过去 or 进去听 on a card over the map, tapped: waiting for the server */
+    joining: "正在进…",
     later: "下次吧",
     switchAsk: "你正在一起听，要换到这场吗？",
     switchYes: "换过去",
