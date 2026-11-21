@@ -184,6 +184,16 @@ button.gt-r:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 .gt-follow.got .gf-msg { color: #5ad18b; }
 .gt-r.gift svg { color: #ff7fae; }
 .gt-r.gift .gt-p i.g { background: #ff7fae; }
+/* a wish list neither full nor empty: over 寻访一次 and 寻访十次 (which cannot be pressed), why, and 改心愿单 */
+.g-short {
+  margin: 14px 16px 0; padding: 8px 12px; border-radius: 12px; background: rgba(255, 93, 143, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 93, 143, 0.35); color: #ffcfdc; font-size: 13px; line-height: 1.5;
+}
+.g-short button {
+  border: 0; background: none; padding: 0 0 0 6px; color: var(--p-yellow) !important; font-weight: 700; font-size: 13px; white-space: nowrap;
+}
+.g-short button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.g-short + .g-btns { margin-top: 10px; }
 .g-btns { display: grid; grid-template-columns: 1fr 1.35fr; gap: 10px; margin: 14px 16px 0; }
 .g-btns button {
   border-radius: 14px; text-align: center; padding: 10px 0; font-weight: 800; font-size: 16px; line-height: 1.35;

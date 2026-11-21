@@ -45,6 +45,9 @@ const MOVED = "9f8c7a61d2a0df8b";
 const MOVED_FRAME = { m: [0, -13.8, 100, 140.4], f: [0, -20.3, 100, 207.8], p: [0, -16.7, 100, 170.2] };
 const HOUR = 3_600_000;
 const id = (game: "arknights" | "endfield", name: string) => passCharNamed(game, name)!.id;
+/** Two full wish lists */
+const SIX = [1, 2, 3, 4, 5, 6];
+const OTHER_SIX = [7, 8, 9, 10, 11, 12];
 
 async function player(email: string, fav: { ak?: string[]; ef?: string[] } = {}): Promise<UserRow> {
   const now = new Date();
@@ -179,7 +182,7 @@ describe("a draw", () => {
 
   it("brings someone from the wish list on the 30th draw without one, owned or not, and starts the count again", async () => {
     const amiya = id("arknights", "阿米娅");
-    const a = await player("a@example.com", { ak: ["阿米娅", "能天使"] });
+    const a = await player("a@example.com", { ak: ["阿米娅", "能天使", "银灰", "陈", "史尔特尔", "艾雅法拉"] });
     await openWallet(a, NOON);
     await setWallet(a.id, { tickets: 50, miss: PITY - 3 });
     // the dice land on 黑, who is not on the list, and on the first of the list for the sure one
@@ -204,6 +207,28 @@ describe("a draw", () => {
     const chance = await draw(a, 1, NOON + 2000, always(id("arknights", "能天使")));
     expect(chance.drawn[0].tier).toBe("wish");
     expect(chance.state.miss).toBe(0);
+  });
+
+  it("refuses a draw while the wish list holds 1 to 5, and draws once it is emptied or filled up", async () => {
+    const a = await player("a@example.com", { ak: ["阿米娅", "能天使"] });
+    expect(await openWallet(a, NOON)).toMatchObject({ wish: [id("arknights", "阿米娅"), id("arknights", "能天使")], wishOpen: true });
+    for (const n of [1, 10]) {
+      expect(await refusal(draw(a, n, NOON, always(1))), String(n)).toEqual({
+        status: 409,
+        message: "心愿单还差 4 位：放满 6 位才能寻访，不要心愿就全部拿掉。",
+      });
+    }
+    // nothing spent, nothing drawn, and no draw to wait a second after
+    expect((await wallet(a.id)).tickets).toBe(WELCOME_TICKETS);
+    expect(await db.select().from(passes)).toEqual([]);
+    await setWallet(a.id, { tickets: 0 });
+    expect(await refusal(draw(a, 1, NOON, always(1)))).toMatchObject({ status: 409, message: expect.stringContaining("还差 4 位") });
+    await setWallet(a.id, { tickets: WELCOME_TICKETS });
+
+    await setWish(a, [], NOON);
+    expect((await draw(a, 1, NOON, always(1))).drawn).toHaveLength(1);
+    await setWish(a, SIX, NOON);
+    expect((await draw(a, 1, NOON + 1000, always(1))).drawn[0]).toMatchObject({ charId: 1, tier: "wish" });
   });
 
   it("keeps no count towards pity with an empty wish list", async () => {
@@ -298,7 +323,7 @@ describe("卡池", () => {
 
   it("draws everyone off the wish list from the game picked, the wish list's other game all the same", async () => {
     const amiya = id("arknights", "阿米娅");
-    const a = await player("a@example.com", { ak: ["阿米娅"] });
+    const a = await player("a@example.com", { ak: ["阿米娅", "银灰", "陈", "史尔特尔", "艾雅法拉", "斯卡蒂"] });
     await openWallet(a, NOON);
     await setWallet(a.id, { tickets: 50 });
     await setPool(a, "ef", NOON);
@@ -407,47 +432,71 @@ describe("关注 B 站领券", () => {
 });
 
 describe("the wish list", () => {
-  it("takes 1 to 6 different characters of the catalogue", async () => {
+  it("takes 6 different characters of the catalogue, or none", async () => {
     const a = await player("a@example.com");
-    expect(await refusal(setWish(a, [1], NOON))).toMatchObject({ status: 409 });
+    expect(await refusal(setWish(a, SIX, NOON))).toMatchObject({ status: 409 });
     await openWallet(a, NOON);
-    for (const ids of [[], [1, 2, 3, 4, 5, 6, 7], [1, 1], [99_999], [0], ["1"], [1.5], "1", null, undefined, { 0: 1 }]) {
-      expect(await refusal(setWish(a, ids, NOON)), JSON.stringify(ids)).toEqual({ status: 400, message: "心愿单要放 1 到 6 位角色，不能重复。" });
+    // too few, too many, one twice, one not in the catalogue, not ids; then not a list
+    const lists = [[1], [1, 2, 3, 4, 5], [1, 2, 3, 4, 5, 6, 7], [1, 1, 2, 3, 4, 5], [99_999, 2, 3, 4, 5, 6], [0], ["1"], [1.5]];
+    for (const ids of [...lists, "1", null, undefined, { 0: 1 }]) {
+      expect(await refusal(setWish(a, ids, NOON)), JSON.stringify(ids)).toEqual({
+        status: 400,
+        message: "心愿单要放满 6 位角色（不能重复），或者一位也不放。",
+      });
     }
-    expect((await setWish(a, [1, 2, 3, 4, 5, 6], NOON)).wish).toEqual([1, 2, 3, 4, 5, 6]);
+    expect((await setWish(a, SIX, NOON)).wish).toEqual(SIX);
+    expect((await wallet(a.id)).wish).toEqual(SIX);
+    expect((await setWish(a, [], NOON)).wish).toEqual([]);
+    expect((await wallet(a.id)).wish).toEqual([]);
   });
 
-  it("changes once a site day, the first filling free, and never moves the count towards pity", async () => {
+  it("changes once a site day while full, emptying it too, a change from one not full free; the count towards pity stays", async () => {
     const a = await player("a@example.com");
     await openWallet(a, NOON);
     await setWallet(a.id, { miss: 17 });
     // they had no 厨力: nothing to pity yet
     expect(await passState(a.id, NOON)).toMatchObject({ wish: [], wishOpen: true, miss: 0 });
-    expect(await setWish(a, [1], NOON)).toMatchObject({ wish: [1], wishOpen: true, miss: 17 });
-    expect(await setWish(a, [1, 2], NOON)).toMatchObject({ wish: [1, 2], wishOpen: false, miss: 17 });
-    expect(await refusal(setWish(a, [3], NOON + HOUR))).toMatchObject({ status: 409, message: expect.stringContaining("凌晨 4 点") });
+    expect(await setWish(a, SIX, NOON)).toMatchObject({ wish: SIX, wishOpen: true, miss: 17 });
+    expect(await setWish(a, OTHER_SIX, NOON)).toMatchObject({ wish: OTHER_SIX, wishOpen: false, miss: 17 });
+    for (const ids of [SIX, []]) {
+      expect(await refusal(setWish(a, ids, NOON + HOUR))).toMatchObject({ status: 409, message: expect.stringContaining("凌晨 4 点") });
+    }
     const tomorrow = Date.parse("2026-11-15T04:00:00+08:00");
     expect(await passState(a.id, tomorrow)).toMatchObject({ wishOpen: true });
-    expect(await setWish(a, [3], tomorrow)).toMatchObject({ wish: [3], wishOpen: false, miss: 17 });
+    // emptied, that day's change: no count while empty, and it may be filled again for free; full, nothing more that day
+    expect(await setWish(a, [], tomorrow)).toMatchObject({ wish: [], wishOpen: true, miss: 0 });
+    expect(await setWish(a, SIX, tomorrow)).toMatchObject({ wish: SIX, wishOpen: false, miss: 17 });
+    expect(await refusal(setWish(a, [], tomorrow + HOUR))).toMatchObject({ status: 409 });
+    expect((await wallet(a.id)).wishDay).toBe("2026-11-15");
 
-    // a list filled from their 厨力 may still be changed that day, once
-    const b = await player("b@example.com", { ef: ["管理员"] });
-    expect(await openWallet(b, NOON)).toMatchObject({ wish: [id("endfield", "管理员")], wishOpen: true });
-    expect(await setWish(b, [4], NOON)).toMatchObject({ wish: [4], wishOpen: false });
-    expect(await refusal(setWish(b, [5], NOON))).toMatchObject({ status: 409 });
+    // a list filled from six of their 厨力 may still be changed that day, once
+    const six = ["阿米娅", "银灰", "陈", "史尔特尔", "艾雅法拉", "斯卡蒂"];
+    const b = await player("b@example.com", { ak: six });
+    expect(await openWallet(b, NOON)).toMatchObject({ wish: six.map((n) => id("arknights", n)), wishOpen: true });
+    expect(await setWish(b, SIX, NOON)).toMatchObject({ wish: SIX, wishOpen: false });
+    expect(await refusal(setWish(b, OTHER_SIX, NOON))).toMatchObject({ status: 409 });
+
+    // fewer of them, or a list of 1 to 5 kept from before, changed that day too: filled up or emptied at once, free
+    const c = await player("c@example.com", { ef: ["管理员"] });
+    expect(await openWallet(c, NOON)).toMatchObject({ wish: [id("endfield", "管理员")], wishOpen: true });
+    await setWallet(c.id, { wish: [1, 2, 3], wishDay: "2026-11-14" });
+    expect(await passState(c.id, NOON)).toMatchObject({ wish: [1, 2, 3], wishOpen: true });
+    expect(await setWish(c, [], NOON)).toMatchObject({ wish: [], wishOpen: true });
+    expect(await setWish(c, SIX, NOON)).toMatchObject({ wish: SIX, wishOpen: false });
+    expect((await wallet(c.id)).wishDay).toBe("2026-11-14");
   });
 });
 
 describe("the wish list on the page", () => {
   it("brings how many of each wish the site has drawn and the player's first pass of each they have, in one more query", async () => {
     const [amiya, exu, hei] = [id("arknights", "阿米娅"), id("arknights", "能天使"), id("arknights", "黑")];
-    const a = await player("a@example.com", { ak: ["阿米娅", "能天使", "黑"] });
+    const a = await player("a@example.com", { ak: ["阿米娅", "能天使", "黑"], ef: ["莱万汀", "佩丽卡", "管理员"] });
     const b = await player("b@example.com");
     for (const u of [a, b]) {
       await openWallet(u, NOON);
       await setWallet(u.id, { tickets: 50 });
     }
-    // somebody else draws 阿米娅 ten times; then the player twice, and 能天使 once; nobody draws 黑
+    // somebody else draws 阿米娅 ten times; then the player twice, and 能天使 once; nobody draws 黑 nor the other three
     await draw(b, 10, NOON, always(amiya));
     await draw(a, 1, NOON, always(amiya));
     await draw(a, 1, NOON + 1000, always(amiya));
@@ -477,7 +526,7 @@ describe("the wish list on the page", () => {
     expect(queries).toHaveLength(4);
     const counts = queries.filter((q) => q.includes('"pass_counters"'));
     expect(counts).toHaveLength(1);
-    expect(counts[0]).toMatch(/"char_id" in \(\$1, \$2, \$3\)/);
+    expect(counts[0]).toMatch(/"char_id" in \(\$1, \$2, \$3, \$4, \$5, \$6\)/);
   });
 
   it("asks nothing of the passes or the counts for an empty wish list", async () => {

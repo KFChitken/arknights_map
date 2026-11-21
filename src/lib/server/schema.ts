@@ -1625,9 +1625,10 @@ export const passCounters = pgTable("pass_counters", {
  * 触须之交 gave (giftsIn); a row whose day is past reads as nothing done yet, and is set back to 0 by the next write.
  * social and guide are no longer written but for that: tickets that came by themselves, before 每日任务; kept so the
  * program before it still runs. miss: draws in a row without anyone from the wish list; wishDay: the site day the
- * list was last changed (null: never by the player, the first was filled in from their 厨力); plain: characters they
- * keep in the normal look though they own two or more; onMap: strangers who open their main roach's card see the
- * character they wear; drawnAt: their last draw, so that every web process keeps to one a second.
+ * list was last changed while full, emptying it too (null: never; the first was filled in from their 厨力, and a
+ * change from one not full never counts); plain: characters they keep in the normal look though they own two or more;
+ * onMap: strangers who open their main roach's card see the character they wear; drawnAt: their last draw, so that
+ * every web process keeps to one a second.
  */
 export const passWallets = pgTable("pass_wallets", {
   userId: uuid("user_id")

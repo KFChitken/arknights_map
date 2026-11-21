@@ -22,6 +22,8 @@ import {
   TICKETS_CAP,
   WELCOME_TICKETS,
   WISH_MAX,
+  wishFree,
+  wishShort,
   type CharCopies,
   type Collection,
   type Drawn,
@@ -181,8 +183,9 @@ export function wishFromFavourites(user: Pick<UserRow, "favArknights" | "favEndf
 }
 
 /**
- * Opening 寻访: the wallet, made the first time with WELCOME_TICKETS and their 厨力 as the wish list (which they may
- * change that day all the same). A wallet made before they first came (a 触须之交's gift) gets the same, once.
+ * Opening 寻访: the wallet, made the first time with WELCOME_TICKETS and their 厨力 as the wish list, which they may
+ * change that day all the same; fewer than WISH_MAX of them, it is filled up or emptied before a draw (wishShort). A
+ * wallet made before they first came (a 触须之交's gift) gets the same, once.
  */
 export async function openWallet(user: UserRow, now = Date.now()): Promise<PassState> {
   const day = siteDay(now);
@@ -238,7 +241,7 @@ async function stateOf(w: Wallet, games: readonly string[], now: number, welcome
     tasks: tasksOf(w, day),
     giftsIn: same ? w.giftsIn : 0,
     wish,
-    wishOpen: !wish.length || w.wishDay !== day,
+    wishOpen: wishFree(wish.length) || w.wishDay !== day,
     miss: wish.length ? w.miss : 0,
     wishOwned: owned.map((o) => ({ charId: o.charId, copies: o.copies, first: { id: o.id, no: o.no, at: o.at.getTime() } })),
     wishDrawn: drawn,
@@ -403,10 +406,11 @@ const sqlIds = (ids: readonly number[]) => sql`${`{${ids.map((i) => Math.trunc(i
 
 /**
  * A draw of 1 or 10, all in one transaction, so no ticket is spent twice and no number given twice: the wallet
- * locked first (one draw at a time for each player, one a second); who comes (rollChars); what each is to the player
- * (tiersOf: their copies before it); then the numbers, taken from each character's counter in order of charId, so
- * two draws never wait on each other the wrong way round, and last, so those rows are held the shortest. Returns the
- * passes in the order drawn, and the wallet after. rand: the dice (crypto.randomInt, a test's own in the tests).
+ * locked first (one draw at a time for each player, one a second; none while the wish list is neither full nor empty,
+ * wishShort, nor with fewer tickets than it takes); who comes (rollChars); what each is to the player (tiersOf: their
+ * copies before it); then the numbers, taken from each character's counter in order of charId, so two draws never
+ * wait on each other the wrong way round, and last, so those rows are held the shortest. Returns the passes in the
+ * order drawn, and the wallet after. rand: the dice (crypto.randomInt, a test's own in the tests).
  * The 卡池 is the wallet's as it was locked, so one picked while a draw is on its way counts from the next.
  */
 export async function draw(
@@ -421,6 +425,8 @@ export async function draw(
     if (!w || !w.welcomed) throw new HttpError(409, T.server.passes.openFirst);
     const since = w.drawnAt ? now - w.drawnAt.getTime() : Infinity;
     if (since >= 0 && since < DRAW_GAP_MS) throw new HttpError(429, T.server.passes.tooFast);
+    const short = wishShort(w.wish.filter(isPassChar).length);
+    if (short) throw new HttpError(409, fmt(T.server.passes.wishShort, { n: short, max: WISH_MAX }));
     if (w.tickets < size) throw new HttpError(409, T.server.passes.notEnough);
 
     const { picks, miss } = rollChars(CATALOG_IDS, w.wish.filter(isPassChar), w.miss, size, rand, poolIds(passPoolOf(w.pool, user.games)));
@@ -457,22 +463,24 @@ export async function draw(
 }
 
 /**
- * The wish list: 1 to WISH_MAX characters of the catalogue, none twice. Once a site day; the first time the list
- * is filled (it was empty: they had no 厨力) does not count. The count towards PITY stays as it was.
+ * The wish list: WISH_MAX characters of the catalogue, none twice, or none at all (Breeze, 2026-11-21). Once a site
+ * day while it is full, emptying it too; a change from one not full yet (wishFree: empty, or the fewer kept from
+ * before) does not count, so one that cannot be drawn with is put right at once. The count towards PITY stays as it
+ * was.
  */
 export async function setWish(user: UserRow, ids: unknown, now = Date.now()): Promise<PassState> {
-  if (!Array.isArray(ids) || !ids.length || ids.length > WISH_MAX || !ids.every(isPassChar) || new Set(ids).size !== ids.length) {
+  if (!Array.isArray(ids) || (ids.length !== 0 && ids.length !== WISH_MAX) || !ids.every(isPassChar) || new Set(ids).size !== ids.length) {
     throw new HttpError(400, T.server.passes.badWish);
   }
   const day = siteDay(now);
   await db.transaction(async (tx) => {
     const [w] = await tx.select().from(passWallets).where(eq(passWallets.userId, user.id)).for("update");
     if (!w || !w.welcomed) throw new HttpError(409, T.server.passes.openFirst);
-    const first = !w.wish.length;
-    if (!first && w.wishDay === day) throw new HttpError(409, T.server.passes.wishChangedToday);
+    const free = wishFree(w.wish.filter(isPassChar).length);
+    if (!free && w.wishDay === day) throw new HttpError(409, T.server.passes.wishChangedToday);
     await tx
       .update(passWallets)
-      .set({ wish: ids, ...(first ? {} : { wishDay: day }) })
+      .set({ wish: ids, ...(free ? {} : { wishDay: day }) })
       .where(eq(passWallets.userId, user.id));
   });
   return passState(user.id, now);

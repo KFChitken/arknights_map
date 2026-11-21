@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { passCharNamed } from "@/lib/passCatalog";
 import { TASK_MAX, TICKETS_CAP, type FollowTask, type PassState, type Task, type WishOwned } from "@/lib/passes";
-import { Detail, layout, Peek, PoolPick, poolLine, sampleWidth, Tasks, WishSlots } from "./Passes";
+import { Detail, DrawButtons, layout, Peek, PoolPick, poolLine, sampleWidth, Tasks, WishEditor, WishSlots } from "./Passes";
 
 /** Room under a card for its name (Passes.tsx CAPTION) */
 const CAPTION = 20;
@@ -139,6 +139,67 @@ describe("关注 B 站领券 on the 寻访 page", () => {
     expect(got).not.toContain("gf-go");
     expect(got).not.toContain("（已关注的也点一下）");
     expect(tasksOf(state([task("touch", 0, 0)]))).not.toContain("gt-follow");
+  });
+});
+
+describe("寻访一次 and 寻访十次", () => {
+  const six = [1, 2, 3, 4, 5, 6];
+  const buttons = (st: PassState, busy = false) =>
+    renderToStaticMarkup(createElement(DrawButtons, { st, busy, onPull: () => {}, onEdit: () => {} }));
+
+  it("may be pressed with a full wish list or an empty one, too few tickets dimming them", () => {
+    for (const wish of [[], six]) {
+      expect(buttons(state([], { wish, tickets: 5 })), String(wish.length)).toBe(
+        '<div class="g-btns"><button class="">寻访一次<small>1 张</small></button><button class="y dim">寻访十次<small>10 张</small></button></div>',
+      );
+    }
+    expect(buttons(state([], { wish: six }), true).match(/ disabled=""/g)).toHaveLength(2);
+  });
+
+  it("may not be pressed with 1 to 5 on the wish list: over them, how many more it wants or to empty it, and 改心愿单", () => {
+    for (const n of [1, 2, 3, 4, 5]) {
+      expect(buttons(state([], { wish: six.slice(0, n), tickets: 50 })), String(n)).toBe(
+        `<p class="g-short">心愿单还差 ${6 - n} 位：放满 6 位才能寻访，不要心愿就全部拿掉。<button>改心愿单 ›</button></p>` +
+          '<div class="g-btns"><button class="" disabled="">寻访一次<small>1 张</small></button>' +
+          '<button class="y" disabled="">寻访十次<small>10 张</small></button></div>',
+      );
+    }
+    const onEdit = vi.fn();
+    type Line = ReactElement<{ children: [string, ReactElement<{ onClick: () => void }>] }>;
+    const [line] = (DrawButtons({ st: state([], { wish: [1] }), busy: false, onPull: () => {}, onEdit }) as ReactElement<{ children: [Line] }>).props
+      .children;
+    line.props.children[1].props.onClick();
+    expect(onEdit).toHaveBeenCalledOnce();
+  });
+});
+
+describe("改心愿单", () => {
+  const editor = (st: PassState) =>
+    renderToStaticMarkup(
+      createElement(WishEditor, { st, art: null, favourites: { arknights: [], endfield: [] }, onBack: () => {}, onSaved: () => {}, onRefused: () => {} }),
+    );
+  /** The note over the list, and 保存 with what it says under it */
+  const note = (html: string) => html.match(/<p class="wl-note">(.*?)<\/p>/)?.[1];
+  const save = (html: string) => html.match(/<button class="wl-save"[^>]*>保存<small>.*?<\/small><\/button>/)?.[0];
+  const free = "放满 6 位才能寻访，不要心愿就一位也不放。没放满的时候改，不算今天那一次。";
+
+  it("saves 6 or none: one kept with fewer cannot be saved as it is, and says how many more; a change while not full is free", () => {
+    const short = editor(state([], { wish: [1, 2, 3] }));
+    expect(note(short)).toBe(free);
+    expect(save(short)).toBe('<button class="wl-save" disabled="">保存<small>还差 3 位</small></button>');
+    const empty = editor(state([], { wish: [] }));
+    expect(note(empty)).toBe(free);
+    expect(save(empty)).toBe('<button class="wl-save" disabled="">保存<small>没放满时改，不算今天那一次</small></button>');
+  });
+
+  it("changes a full one once a site day", () => {
+    const full = editor(state([], { wish: [1, 2, 3, 4, 5, 6] }));
+    expect(note(full)).toBe("今天还能改 1 次，改了不影响保底已经数到第几次。");
+    expect(save(full)).toBe('<button class="wl-save" disabled="">保存<small>保存后今天就不能再改了</small></button>');
+    const locked = editor(state([], { wish: [1, 2, 3, 4, 5, 6], wishOpen: false }));
+    expect(note(locked)).toBe("今天已经改过了，北京时间凌晨 4 点以后能再改。");
+    expect(save(locked)).toBeUndefined();
+    expect(locked).not.toContain("wl-search");
   });
 });
 

@@ -36,6 +36,8 @@ import {
   unclaimed,
   WELCOME_TICKETS,
   WISH_MAX,
+  wishFree,
+  wishShort,
   type Collection,
   type Drawn,
   type DrawSize,
@@ -237,6 +239,8 @@ export default function Passes({
       await claims.current;
       const now = stRef.current;
       if (!now || !live.current) return;
+      const short = wishShort(now.wish.length);
+      if (short) return setMsg(fmt(T.passes.wishShort, { n: short, max: WISH_MAX }));
       if (now.tickets < n) {
         const left = Math.min(unclaimed(now.tasks), TICKETS_CAP - now.tickets);
         return setMsg(left > 0 ? fmt(T.passes.notEnoughClaim, { n: left }) : T.passes.notEnough);
@@ -801,6 +805,35 @@ export function PoolPick({ pool, onPick }: { pool: PassPool; onPick: (pool: Pass
   );
 }
 
+/**
+ * 寻访一次 and 寻访十次. Too few tickets: dimmed, and pressed, says how to get more. A wish list neither full nor empty
+ * (wishShort: Breeze, 2026-11-21): neither can be pressed, and over them a line says how many it wants, or to empty
+ * it, with 改心愿单.
+ */
+export function DrawButtons({ st, busy, onPull, onEdit }: { st: PassState; busy: boolean; onPull: (n: DrawSize) => void; onEdit: () => void }) {
+  const short = wishShort(st.wish.length);
+  return (
+    <>
+      {short > 0 && (
+        <p className="g-short">
+          {fmt(T.passes.wishShort, { n: short, max: WISH_MAX })}
+          <button onClick={onEdit}>{T.passes.editWish} ›</button>
+        </p>
+      )}
+      <div className="g-btns">
+        <button className={st.tickets < 1 ? "dim" : ""} onClick={() => onPull(1)} disabled={busy || short > 0}>
+          {T.passes.drawOne}
+          <small>{fmt(T.passes.cost, { n: 1 })}</small>
+        </button>
+        <button className={`y${st.tickets < 10 ? " dim" : ""}`} onClick={() => onPull(10)} disabled={busy || short > 0}>
+          {T.passes.drawTen}
+          <small>{fmt(T.passes.cost, { n: 10 })}</small>
+        </button>
+      </div>
+    </>
+  );
+}
+
 function Home({
   st,
   userId,
@@ -849,11 +882,11 @@ function Home({
 }) {
   const has = st.wish.length > 0;
   const miss = has ? st.miss : 0;
-  // a task claimed: on to the next with tickets to claim, else to 寻访十次
+  // a task claimed: on to the next with tickets to claim, else to 寻访十次 (改心愿单 over it while it cannot be pressed)
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!claimed) return;
-    const next = root.current?.querySelector<HTMLElement>("button.gt-r") ?? root.current?.querySelector<HTMLElement>(".g-btns .y");
+    const next = root.current?.querySelector<HTMLElement>("button.gt-r") ?? root.current?.querySelector<HTMLElement>(".g-short button, .g-btns .y");
     next?.focus({ preventScroll: true });
   }, [claimed]);
   return (
@@ -900,17 +933,7 @@ function Home({
           </div>
         </div>
         <Tasks st={st} userId={userId} onClaim={onClaim} onFollow={onFollow} />
-        <div className="g-btns">
-          {/* too few tickets: dimmed, and pressed, says how to get more */}
-          <button className={st.tickets < 1 ? "dim" : ""} onClick={() => onPull(1)} disabled={busy}>
-            {T.passes.drawOne}
-            <small>{fmt(T.passes.cost, { n: 1 })}</small>
-          </button>
-          <button className={`y${st.tickets < 10 ? " dim" : ""}`} onClick={() => onPull(10)} disabled={busy}>
-            {T.passes.drawTen}
-            <small>{fmt(T.passes.cost, { n: 10 })}</small>
-          </button>
-        </div>
+        <DrawButtons st={st} busy={busy} onPull={onPull} onEdit={() => onScreen("wish")} />
         <p className="g-msg" role="status">
           {msg}
         </p>
@@ -1734,9 +1757,10 @@ const STARS = (r: number | null) => (r ? "★".repeat(r) : null);
 
 /**
  * 改心愿单: the six places (✕ takes one off), and everyone who may go in them, by name, game or the player's 厨力.
- * Saved once a site day; the first list they fill does not count, and the count towards a sure wish stays.
+ * Saved full or empty only (Breeze, 2026-11-21: 保存 says how many more till then); once a site day while the list
+ * kept is full, a change from one not full (wishFree) never counting; the count towards a sure wish stays.
  */
-function WishEditor({
+export function WishEditor({
   st,
   art,
   favourites,
@@ -1757,7 +1781,7 @@ function WishEditor({
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const open = st.wishOpen;
-  const first = st.wish.length === 0;
+  const free = wishFree(st.wish.length);
   const favIds = useMemo(() => {
     const ids = new Set<number>();
     for (const game of ["arknights", "endfield"] as const) for (const name of favourites[game]) {
@@ -1781,6 +1805,7 @@ function WishEditor({
     .map(characterName)
     .join(T.passes.wish.and);
   const changed = draft.length !== st.wish.length || draft.some((id, i) => id !== st.wish[i]);
+  const short = wishShort(draft.length);
   const toggle = (id: number) => {
     setNote("");
     setDraft((d) => {
@@ -1793,7 +1818,7 @@ function WishEditor({
     });
   };
   const save = async () => {
-    if (!open || !changed || !draft.length || saving) return;
+    if (!open || !changed || short || saving) return;
     setSaving(true);
     try {
       onSaved(await passesApi.wish(draft));
@@ -1813,7 +1838,7 @@ function WishEditor({
           <WishSlots st={st} art={art} draft={draft} onRemove={open ? (id) => toggle(id) : undefined} />
         </div>
         <p className="wl-note">
-          {!open ? T.passes.wish.locked : first ? T.passes.wish.first : T.passes.wish.open}
+          {!open ? T.passes.wish.locked : free ? fmt(T.passes.wish.free, { max: WISH_MAX }) : T.passes.wish.open}
           {open && ownedNames && (
             <>
               <br />
@@ -1869,9 +1894,9 @@ function WishEditor({
           <p className="wl-msg" role="status">
             {note}
           </p>
-          <button className="wl-save" onClick={() => void save()} disabled={!changed || !draft.length || saving}>
+          <button className="wl-save" onClick={() => void save()} disabled={!changed || short > 0 || saving}>
             {T.passes.wish.save}
-            <small>{first ? T.passes.wish.saveFirst : T.passes.wish.saveNote}</small>
+            <small>{short ? fmt(T.passes.wish.short, { n: short }) : free ? T.passes.wish.saveFree : T.passes.wish.saveNote}</small>
           </button>
         </div>
       )}

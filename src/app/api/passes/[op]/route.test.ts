@@ -6,6 +6,7 @@ import { db } from "@/lib/server/db";
 import { forgetRoachPasses } from "@/lib/server/passes";
 import { passCounters, passes, passWallets, roaches, sessions, users } from "@/lib/server/schema";
 import { loadSettings, setPassFollow } from "@/lib/server/siteSettings";
+import { siteDay } from "@/lib/siteDay";
 import { GET, POST, PUT } from "./route";
 
 vi.mock("@/lib/server/env", async (original) => ({ ...(await original<typeof import("@/lib/server/env")>()), ADMIN_EMAILS: ["owner@example.com"] }));
@@ -42,7 +43,7 @@ async function call(method: Method, op: string, body?: unknown, query = ""): Pro
 const EVERY: [Method, string, unknown?, string?][] = [
   ["POST", "open"],
   ["POST", "draw", { n: 1 }],
-  ["PUT", "wish", { ids: [1] }],
+  ["PUT", "wish", { ids: [1, 2, 3, 4, 5, 6] }],
   ["PUT", "pool", { pool: "ef" }],
   ["POST", "follow"],
   ["PUT", "look", { charId: 1, plain: true }],
@@ -119,8 +120,9 @@ describe("通行证寻访's requests", () => {
     expect(drew.body.drawn).toEqual([expect.objectContaining({ no: 1, tier: "new", foil: true })]);
     expect(drew.body.state).toMatchObject({ tickets: 9 });
     expect(await call("POST", "draw", { n: 3 })).toMatchObject({ status: 400, body: { error: "一次只能寻访 1 次或 10 次。" } });
-    expect(await call("PUT", "wish", { ids: [1, 2] })).toMatchObject({ status: 200, body: { wish: [1, 2] } });
-    expect(await call("PUT", "pool", { pool: "ef" })).toMatchObject({ status: 200, body: { pool: "ef", wish: [1, 2] } });
+    expect(await call("PUT", "wish", { ids: [1, 2] })).toMatchObject({ status: 400, body: { error: "心愿单要放满 6 位角色（不能重复），或者一位也不放。" } });
+    expect(await call("PUT", "wish", { ids: [1, 2, 3, 4, 5, 6] })).toMatchObject({ status: 200, body: { wish: [1, 2, 3, 4, 5, 6] } });
+    expect(await call("PUT", "pool", { pool: "ef" })).toMatchObject({ status: 200, body: { pool: "ef", wish: [1, 2, 3, 4, 5, 6] } });
     expect(await call("PUT", "pool", { pool: "endfield" })).toMatchObject({ status: 400, body: { error: "卡池只能选两边都抽、只抽方舟或只抽终末地。" } });
     expect(await call("GET", "collection")).toMatchObject({ status: 200, body: { passes: 1 }, cache: "no-store" });
     const log = await call("GET", "log");
@@ -253,6 +255,17 @@ describe("通行证寻访's requests", () => {
     await call("POST", "open");
     await setPassFollow(id, { on: true, name: "Breeze青嵐", url: "https://space.bilibili.com/12345" });
     expect(await call("POST", "follow", { code: "whatever" })).toMatchObject({ status: 200, body: { tickets: 20, follow: { got: true } } });
+  });
+
+  it("refuse a draw while the wish list kept holds 1 to 5, and let it be emptied at once, though changed that day", async () => {
+    vi.stubEnv("PASSES", "on");
+    const id = await account("player@example.com");
+    await signIn(id);
+    await call("POST", "open");
+    await db.update(passWallets).set({ wish: [1, 2], wishDay: siteDay() }).where(eq(passWallets.userId, id));
+    expect(await call("POST", "draw", { n: 1 })).toMatchObject({ status: 409, body: { error: "心愿单还差 4 位：放满 6 位才能寻访，不要心愿就全部拿掉。" } });
+    expect(await call("PUT", "wish", { ids: [] })).toMatchObject({ status: 200, body: { wish: [], wishOpen: true } });
+    expect(await call("POST", "draw", { n: 1 })).toMatchObject({ status: 200, body: { state: { tickets: 9 } } });
   });
 
   it("slow down a player who asks too fast", async () => {

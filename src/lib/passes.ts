@@ -60,8 +60,15 @@ export type PassFollowDesk = { settings: PassFollow; shown: boolean; passes: "on
 
 /** The pull that surely brings someone from the wish list: after PITY - 1 without one */
 export const PITY = 30;
-/** Characters on a wish list, at most */
+/**
+ * Characters on a wish list: a draw wants exactly this many, or none at all (Breeze, 2026-11-21). One kept with
+ * fewer (the 厨力 it was first filled with, or saved before then) is filled up or emptied before the next draw.
+ */
 export const WISH_MAX = 6;
+/** How many more a wish list of n wants before a draw: none while it is empty or full */
+export const wishShort = (n: number) => (n > 0 && n < WISH_MAX ? WISH_MAX - n : 0);
+/** Whether a change to a wish list of n leaves the site day's one change (PassState wishOpen) unspent: not full yet */
+export const wishFree = (n: number) => n < WISH_MAX;
 /** How many passes one draw makes */
 export const DRAW_SIZES = [1, 10] as const;
 export type DrawSize = (typeof DRAW_SIZES)[number];
@@ -111,9 +118,12 @@ export type PassState = {
   tasks: TaskState[];
   /** the tickets 触须之交 gave today */
   giftsIn: number;
-  /** catalogue ids, at most WISH_MAX; empty when the player never had any 厨力 and never picked */
+  /**
+   * catalogue ids, at most WISH_MAX; empty when the player never had any 厨力 and never picked, or emptied it. Fewer
+   * than WISH_MAX (wishShort): no draw till it is filled up or emptied
+   */
   wish: number[];
-  /** whether the wish list may still be changed this site day (picking the first one never counts) */
+  /** whether the wish list may still be changed this site day (a change from one not full never counts: wishFree) */
   wishOpen: boolean;
   /** draws in a row without anyone from the wish list (0 while it is empty) */
   miss: number;

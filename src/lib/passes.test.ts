@@ -23,6 +23,9 @@ import {
   TICKETS_CAP,
   tiersOf,
   unclaimed,
+  WISH_MAX,
+  wishFree,
+  wishShort,
   type Tier,
 } from "./passes";
 
@@ -145,6 +148,14 @@ describe("rollChars", () => {
     const rand = () => ids.indexOf(400);
     expect(rollChars(ids, [], 0, 100, rand).miss).toBe(0);
     expect(rollChars(ids, [], PITY - 1, 10, rand).picks.every((p) => p.charId === 400 && !p.wish)).toBe(true);
+  });
+});
+
+describe("the wish list", () => {
+  it("wants 6 for a draw, or none: how many more for 1 to 5, and a change before it is full never counts", () => {
+    expect(WISH_MAX).toBe(6);
+    expect([0, 1, 2, 3, 4, 5, 6].map(wishShort)).toEqual([0, 5, 4, 3, 2, 1, 0]);
+    expect([0, 1, 5, 6].map(wishFree)).toEqual([true, true, true, false]);
   });
 });
 
