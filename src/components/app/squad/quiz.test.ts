@@ -2,9 +2,21 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SquadMember, SquadRoom } from "@/lib/squad";
-import { QUIZ_ANSWER_MS, QUIZ_INTRO_MS, QUIZ_REVEAL_MS, QUIZ_RESULT_MS, quizTimes, type QuizAsk, type QuizKind, type QuizMode, type QuizQuestion } from "@/lib/squadMode";
+import {
+  QUIZ_ANSWER_MS,
+  QUIZ_FETCH_MS,
+  QUIZ_INTRO_MS,
+  QUIZ_LEAD_MS,
+  QUIZ_LOAD_MAX_MS,
+  QUIZ_REVEAL_MS,
+  QUIZ_RESULT_MS,
+  type QuizAsk,
+  type QuizKind,
+  type QuizMode,
+  type QuizQuestion,
+} from "@/lib/squadMode";
 import { QuizView, ladleLine, quizPhase, quizRanks, resultLine, type QuizSound } from "./SquadQuiz";
-import { forgetSquadPage, loadSquadRoom, squadQuizAnswer, squadQuizPicksNow, type QuizPicks } from "./squading";
+import { forgetSquadPage, loadSquadRoom, squadQuizAnswer, squadQuizAsksNow, squadQuizPicksNow, type QuizPicks } from "./squading";
 import { modeRow } from "./SquadPlays";
 
 const NOW = Date.parse("2026-11-20T13:00:00+08:00");
@@ -23,10 +35,14 @@ const member = (h: number, more: Partial<SquadMember> = {}): SquadMember => ({
   extras: [],
   ...more,
 });
-/** Five questions of these kinds from a quiz opened at `at`, as the server times them, each with what is given */
+/** Five questions of these kinds from a quiz opened at `at`, as the server times them (each loaded in time: starting at its from), each with what is given */
 function questions(at: number, kinds: QuizKind[], more: Partial<QuizQuestion>[] = []): QuizQuestion[] {
-  const times = quizTimes(at, kinds);
-  return kinds.map((kind, n) => ({ n, kind, ...times[n], ...more[n] }));
+  let from = at + QUIZ_LEAD_MS;
+  return kinds.map((kind, n) => {
+    const timed = { from, at: from, ends: from + (kind === "intro" ? QUIZ_INTRO_MS : QUIZ_ANSWER_MS) };
+    from = timed.ends + QUIZ_REVEAL_MS;
+    return { n, kind, ...timed, ...more[n] };
+  });
 }
 const KINDS: QuizKind[] = ["sil", "crop", "intro", "meme", "sil"];
 /** Opened 3 s ago by you (h 1): its first question starting now */
@@ -124,6 +140,26 @@ describe("凯尔希随堂测's card", () => {
     expect(html).toContain("<small>你</small><b>0</b>");
     expect(html).toContain("<small>企鹅物流</small><b>0</b>");
     expect(html).toContain("不答了，去围观");
+  });
+
+  it("waits for everyone answering to have a question loaded, saying how many have, its three not shown yet", () => {
+    // the first could have started now; one of the two has it, so it waits (8 s at most), and those after it with it
+    const base = quiz();
+    const late = (q: QuizQuestion) => ({ ...q, at: q.at + QUIZ_LOAD_MAX_MS, ends: q.ends + QUIZ_LOAD_MAX_MS });
+    const m = { ...base, questions: base.questions.map((q) => (q.n ? { ...late(q), from: q.from + QUIZ_LOAD_MAX_MS } : { ...late(q), wait: { ready: 1, of: 2 } })) };
+    expect(quizPhase(m, NOW + 500)).toEqual({ at: "load", q: m.questions[0] });
+    expect(quizPhase(m, NOW + QUIZ_LOAD_MAX_MS)).toEqual({ at: "ask", q: m.questions[0] });
+    const r = room({ mode: m });
+    const waiting = view(r, NOW + 500, { asks: { 0: ask(0, "sil", { pic: PIC }) } });
+    expect(waiting).toContain("凯尔希随堂测 · 第 1 / 5 题");
+    expect(waiting).toContain('<span class="say">等大家把题目加载好…（1/2）</span>');
+    expect(waiting).toContain('class="stage k-sil k-lead"');
+    expect(waiting).not.toContain('<img class="sil"');
+    expect(waiting).not.toContain("这是谁的剪影？");
+    expect(waiting.match(/<button type="button" class="opt" disabled="">/g)).toHaveLength(3);
+    expect(waiting).not.toContain('class="secs"');
+    // this page's own not here yet: still coming
+    expect(view(r, NOW + 500)).toContain('<span class="say">出题中…</span>');
   });
 
   it("asks a silhouette with its picture, the seconds left and a bar running down, its three to pick from", () => {
@@ -325,6 +361,81 @@ describe("the quiz on the page", () => {
       at: m.begun,
       picks: { 0: { pick: 1, right: true, first: true, answer: 1 }, 1: { pick: 0, right: false, first: false, answer: 2 } },
     });
+  });
+
+  it("asks for each question ahead, card open or not, and says it has it loaded to the server; one watching only looks", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW - 3_000);
+    // a page whose own timers go off as its clock is moved on
+    let id = 0;
+    const timers = new Map<number, { at: number; fn: () => void }>();
+    const sent: { url: string; body: Record<string, unknown> }[] = [];
+    let loaded = 503;
+    vi.stubGlobal("window", {
+      __ZP_I18N: globalThis.__ZP_I18N_SERVER!(),
+      setTimeout: (fn: () => void, ms = 0) => {
+        timers.set(++id, { at: Date.now() + ms, fn });
+        return id;
+      },
+      clearTimeout: (k: number) => void timers.delete(k),
+      localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+    });
+    const base = quiz({ begun: NOW - 3_000 });
+    const late = (q: QuizQuestion) => ({ ...q, at: q.at + QUIZ_LOAD_MAX_MS, ends: q.ends + QUIZ_LOAD_MAX_MS });
+    const m = { ...base, questions: base.questions.map((q) => (q.n ? { ...late(q), from: q.from + QUIZ_LOAD_MAX_MS } : { ...late(q), wait: { ready: 0, of: 2 } })) };
+    let r = room({ mode: m, now: NOW - 3_000 });
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      sent.push({ url, body });
+      if (url === "/api/squad/room") return new Response(JSON.stringify({ room: r, now: Date.now() }));
+      if (url === "/api/squad/question") return new Response(JSON.stringify(ask(body.n as number, "meme", { ask: "“刀客塔”说的是？", now: Date.now() })));
+      if (url === "/api/squad/loaded") return new Response(JSON.stringify(loaded === 200 ? { now: Date.now() } : { error: "忙" }), { status: loaded });
+      return new Response("{}");
+    });
+    const settle = async () => {
+      for (let i = 0; i < 4; i++) await new Promise((done) => setTimeout(done, 0));
+    };
+    const go = async (t: number) => {
+      for (;;) {
+        const due = [...timers.entries()].filter(([, x]) => x.at <= t).sort((p, q) => p[1].at - q[1].at)[0];
+        if (!due) break;
+        timers.delete(due[0]);
+        vi.setSystemTime(Math.max(Date.now(), due[1].at));
+        due[1].fn();
+        await settle();
+      }
+      vi.setSystemTime(t);
+      await settle();
+    };
+    await loadSquadRoom();
+    // not yet: nothing asked for
+    await go(NOW - QUIZ_FETCH_MS - 100);
+    expect(sent.filter((x) => x.url === "/api/squad/question")).toEqual([]);
+    // from just before it could start: asked for, kept, and said loaded (the server busy at first: again in a while)
+    await go(NOW - QUIZ_FETCH_MS + 400);
+    expect(sent.filter((x) => x.url === "/api/squad/question").map((x) => x.body)).toEqual([{ n: 0 }]);
+    expect(squadQuizAsksNow()).toMatchObject({ begun: NOW - 3_000, got: { 0: { n: 0, ask: "“刀客塔”说的是？" } } });
+    expect(sent.filter((x) => x.url === "/api/squad/loaded").map((x) => x.body)).toEqual([{ n: 0 }]);
+    loaded = 200;
+    await go(NOW - QUIZ_FETCH_MS + 1_200);
+    expect(sent.filter((x) => x.url === "/api/squad/loaded")).toHaveLength(2);
+    // once said, never again; the next not asked for while this one waits
+    await go(NOW + 2_000);
+    expect(sent.filter((x) => x.url === "/api/squad/loaded")).toHaveLength(2);
+    expect(sent.filter((x) => x.url === "/api/squad/question")).toHaveLength(1);
+    // its wait over by itself: the room read again for it
+    const reads = sent.filter((x) => x.url === "/api/squad/room").length;
+    await go(NOW + QUIZ_LOAD_MAX_MS + 400);
+    expect(sent.filter((x) => x.url === "/api/squad/room").length).toBeGreaterThan(reads);
+    // one watching (not in the round) asks for it to see it, never says it has it
+    forgetSquadPage();
+    sent.length = 0;
+    r = room({ mode: { ...m, in: [{ h: 2, combo: 0 }] }, now: Date.now() });
+    vi.setSystemTime(NOW - 3_000);
+    await loadSquadRoom();
+    await go(NOW - QUIZ_FETCH_MS + 400);
+    expect(sent.filter((x) => x.url === "/api/squad/question")).toHaveLength(1);
+    expect(sent.filter((x) => x.url === "/api/squad/loaded")).toEqual([]);
   });
 
   it("keeps your answers by round: the next round of the same match starts with none", async () => {

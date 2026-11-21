@@ -3,28 +3,18 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { fmt, T } from "@/i18n";
 import type { SquadRoom } from "@/lib/squad";
-import {
-  QUIZ_FETCH_MS,
-  QUIZ_KINDS,
-  QUIZ_QUESTIONS,
-  QUIZ_REVEAL_MS,
-  quizLast,
-  type QuizAsk,
-  type QuizMode,
-  type QuizQuestion,
-} from "@/lib/squadMode";
+import { QUIZ_KINDS, QUIZ_QUESTIONS, QUIZ_REVEAL_MS, quizLast, type QuizAsk, type QuizMode, type QuizQuestion } from "@/lib/squadMode";
 import { WorldError } from "@/lib/world/types";
 import { isListening, listenLiteNow, useListenPlayer } from "../listening";
 import { SquadRoach } from "./SquadRoach";
 import { StackBehind } from "./SquadStack";
 import {
   closeSquadModeCard,
-  loadSquadRoom,
   squadModeIn,
   squadQuizAnswer,
-  squadQuizAsk,
   squadServerNow,
   useSquadModeCard,
+  useSquadQuizAsks,
   useSquadQuizPicks,
   useSquadRoom,
   type QuizPick,
@@ -40,30 +30,33 @@ import "./squadModes.css";
  * seconds left and a bar running down, and its three, A/B/C. One in it picks once (squadQuizAnswer): the first right
  * gets the point. Once someone got it, or its time is up, the right one shows, who was first and how fast, and the
  * next comes on its own; after the fifth, where everyone came and who wears 漏勺. One watching sees it all and joins
- * from the next question. The questions follow the server's clock: each one's three (and picture or song) asked for
- * from just before it starts; the room asked again as a question's time is up, for its answer.
+ * from the next question. The questions follow the server's clock: each one's three (and picture or song) loaded
+ * ahead by the page (squading.ts), a question shown and answered once everyone answering has it (saying how many have
+ * it meanwhile), or a few seconds late at most.
  */
 
 /** The page's clock is looked at this often while the card is open */
 const TICK_MS = 200;
-/** A question is asked for this long after its window opens (the server's clock as the page has it may be off a little) */
-const ASK_AFTER_MS = 120;
-/** Asked for again this long after a try that did not go, this many times at most */
-const ASK_AGAIN_MS = 400;
-const ASK_TRIES = 6;
-/** The room is asked again this long after a question's time is up, for its answer */
-const ANSWER_AFTER_MS = 150;
 /** The intro is put back where it should be when this far off it (s) */
 const DRIFT_S = 0.3;
 const NO_ASKS: Readonly<Record<number, QuizAsk>> = {};
 
-/** Where the quiz is now (on the server's clock): before its first question, a question being answered, its answer showing, or the results */
-export type QuizPhase = { at: "lead"; q: QuizQuestion } | { at: "ask"; q: QuizQuestion } | { at: "reveal"; q: QuizQuestion } | { at: "results" };
+/**
+ * Where the quiz is now (on the server's clock): before its first question, a question waiting for everyone answering
+ * to have it loaded, one being answered, its answer showing, or the results
+ */
+export type QuizPhase =
+  | { at: "lead"; q: QuizQuestion }
+  | { at: "load"; q: QuizQuestion }
+  | { at: "ask"; q: QuizQuestion }
+  | { at: "reveal"; q: QuizQuestion }
+  | { at: "results" };
 export function quizPhase(mode: QuizMode, now: number): QuizPhase {
   const qs = mode.questions;
   if (!qs.length) return { at: "results" };
-  if (now < qs[0].at) return { at: "lead", q: qs[0] };
-  const q = qs.findLast((x) => x.at <= now) ?? qs[0];
+  if (now < qs[0].from) return { at: "lead", q: qs[0] };
+  const q = qs.findLast((x) => x.from <= now) ?? qs[0];
+  if (now < q.at) return { at: "load", q };
   if (now < q.ends) return { at: "ask", q };
   if (q.n < qs.length - 1 || now < q.ends + QUIZ_REVEAL_MS) return { at: "reveal", q };
   return { at: "results" };
@@ -132,7 +125,9 @@ function Stage({ q, ask, sound, phase, now, onSound }: { q: QuizQuestion; ask: Q
   const t = T.squad.quiz;
   const asking = phase === "ask" && q.answer === undefined;
   let mid: ReactNode;
-  if (phase === "lead") mid = <span className="lead">{Math.max(1, Math.ceil((q.at - now) / 1000))}</span>;
+  if (phase === "lead") mid = <span className="lead">{Math.max(1, Math.ceil((q.from - now) / 1000))}</span>;
+  // waiting for everyone answering to have it loaded: how many have (this page's own not here yet: still coming)
+  else if (phase === "load") mid = <span className="say">{ask && q.wait ? fmt(t.waitLoad, { n: q.wait.ready, of: q.wait.of }) : t.loading}</span>;
   else if (q.kind === "meme") mid = <b className="board">{ask?.ask ?? q.ask ?? t.loading}</b>;
   else if (q.kind === "intro") {
     mid =
@@ -161,7 +156,7 @@ function Stage({ q, ask, sound, phase, now, onSound }: { q: QuizQuestion; ask: Q
     mid = <img className={q.kind} src={ask.pic} alt={t.types[q.kind]} draggable={false} />;
   else mid = <span className="say">{ask ? t.noPicture : t.loading}</span>;
   return (
-    <div className={`stage k-${q.kind}${phase === "lead" ? " k-lead" : ""}`}>
+    <div className={`stage k-${q.kind}${phase === "lead" || phase === "load" ? " k-lead" : ""}`}>
       <div className="mid">{mid}</div>
       {asking && <span className="secs">{fmt(t.secs, { s: Math.max(0, Math.ceil((q.ends - now) / 1000)) })}</span>}
     </div>
@@ -211,7 +206,7 @@ export function QuizView({
   const mine = picks?.at === mode.begun ? picks : null;
   const head =
     phase.at === "lead"
-      ? fmt(t.startsIn, { s: Math.max(1, Math.ceil((phase.q.at - now) / 1000)) })
+      ? fmt(t.startsIn, { s: Math.max(1, Math.ceil((phase.q.from - now) / 1000)) })
       : phase.at === "results"
         ? t.done
         : fmt(t.count, { n: phase.q.n + 1, of: QUIZ_QUESTIONS });
@@ -296,14 +291,14 @@ function Question({
   const t = T.squad.quiz;
   const { q } = phase;
   const answer = q.answer ?? pick?.answer;
-  const shown = phase.at !== "lead";
+  const shown = phase.at !== "lead" && phase.at !== "load";
   const options = shown ? (ask?.options ?? q.options) : undefined;
   const open = phase.at === "ask" && q.answer === undefined && me && !pick;
   const res = shown ? resultLine(room, q, pick, now) : null;
   const next = mode.questions[q.n + 1];
   const decided = q.answer !== undefined || now >= q.ends;
   const after =
-    !decided || phase.at === "lead" ? null : next ? fmt(t.next, { s: Math.max(1, Math.ceil((next.at - now) / 1000)) }) : t.lastOne;
+    !decided || !shown ? null : next ? fmt(t.next, { s: Math.max(1, Math.ceil((next.from - now) / 1000)) }) : t.lastOne;
   return (
     <>
       <div className="qcard">
@@ -440,42 +435,18 @@ export function useIntro(src: string | null, at: number, len: number) {
 }
 
 /**
- * Each question of the quiz playing asked for from just before it starts (its three, its picture or song), and the
- * room read again once its time is up, for its answer; failed: why one could not be had, after its tries
+ * Each question of the quiz playing as the page has it loaded (squading.ts: asked for and loaded ahead, card open or
+ * not), for this round; failed: why one could not be had, after its tries
  */
-export function useQuizAsks(mode: QuizMode | null, now: number, failed: (text: string) => void) {
-  const [asks, setAsks] = useState<{ at: number; got: Record<number, QuizAsk> }>({ at: 0, got: {} });
-  const asking = useRef(new Map<string, number>());
-  const looked = useRef(new Set<string>());
+export function useQuizAsks(mode: QuizMode | null, _now: number, failed: (text: string) => void) {
+  const asks = useSquadQuizAsks();
+  const mine = Boolean(mode) && asks.begun === mode?.begun;
   const fail = useRef(failed);
   fail.current = failed;
-  // by round: a match plays round after round from one start (at), each its own questions (begun)
-  const got = mode && asks.at === mode.begun ? asks.got : NO_ASKS;
   useEffect(() => {
-    if (!mode) return;
-    for (const q of mode.questions) {
-      const key = `${mode.begun}:${q.n}`;
-      const tries = asking.current.get(key) ?? 0;
-      if (!got[q.n] && tries >= 0 && tries < ASK_TRIES && now >= q.at - QUIZ_FETCH_MS + ASK_AFTER_MS && now < q.ends + QUIZ_REVEAL_MS) {
-        // -1: on its way
-        asking.current.set(key, -1);
-        squadQuizAsk(q.n)
-          .then((a) => {
-            asking.current.delete(key);
-            setAsks((was) => ({ at: mode.begun, got: { ...(was.at === mode.begun ? was.got : {}), [q.n]: a } }));
-          })
-          .catch((e: unknown) => {
-            window.setTimeout(() => asking.current.set(key, tries + 1), ASK_AGAIN_MS);
-            if (tries + 1 >= ASK_TRIES) fail.current(e instanceof WorldError ? e.message : T.map.common.tryAgain);
-          });
-      }
-      if (q.answer === undefined && now >= q.ends + ANSWER_AFTER_MS && !looked.current.has(key)) {
-        looked.current.add(key);
-        void loadSquadRoom().catch(() => {});
-      }
-    }
-  }, [mode, now, got]);
-  return got;
+    if (mine && asks.err) fail.current(asks.err);
+  }, [mine, asks.err]);
+  return mine ? asks.got : NO_ASKS;
 }
 
 export default function SquadQuiz() {

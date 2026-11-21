@@ -125,6 +125,8 @@ export const squadApi = {
   question: (n: number) => call<QuizAsk>("question", post({ n })),
   /** 凯尔希随堂测: your answer (pick: 0–2) to question n, at the server's clock as this page has it */
   answer: (n: number, pick: number, at: number) => call<QuizAnswered>("answer", post({ n, pick, at })),
+  /** 凯尔希随堂测: this page has question n loaded (its three, and its picture or song ready) */
+  loaded: (n: number) => call<{ now: number }>("loaded", post({ n })),
   /** W 的礼物: 传, the gift in your hands on to the next seat, at the server's clock as this page has it; its time as taken */
   pass: (at: number) => call<{ now: number; at: number }>("pass", post({ at })),
   /**

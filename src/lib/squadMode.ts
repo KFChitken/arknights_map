@@ -146,7 +146,10 @@ export type SquadMode = QuizMode | GiftMode | RaceMode | LobbyMode;
  * whose silhouette (sil) or part of whose 立绘 (crop) this is, from the pass pictures of 寻访's characters, made on the
  * server so a page cannot tell whose; which song this intro is (intro), from 听歌's songs, drawn only when everyone in
  * the room could hear it then; or one of the design thread's 方舟梗 questions (meme, src/data/quiz-meme.json). Each
- * answers each question once; the first right gets a point. A question takes QUIZ_ANSWER_MS, an intro's
+ * answers each question once; the first right gets a point. A question is shown, and answered, only once everyone
+ * answering whose page is here has it loaded (its three, and its picture or song ready: each page says so), or
+ * QUIZ_LOAD_MAX_MS after it could start at the soonest (its from: QUIZ_LEAD_MS after the round's start for the first,
+ * the reveal's end of the one before for the others), whichever comes first. It takes QUIZ_ANSWER_MS, an intro's
  * QUIZ_INTRO_MS (as long as it plays); then QUIZ_REVEAL_MS showing the answer, and the next. After the last,
  * QUIZ_RESULT_MS of results; with two or more in it, the lowest (all of those tied there, unless everyone is) wear 漏勺
  * QUIZ_LADLE_MS. One alone practises. Only those in the round answer; one coming in after its start waits for the next.
@@ -160,22 +163,28 @@ export const QUIZ_RESULT_MS = 6_000;
 export const QUIZ_LADLE_MS = 60_000;
 /** An answer's own time, as the page sends it on the server's clock, taken within this of the server's now (as 跳's) */
 export const QUIZ_EARLY_MS = 400;
-/** A question's own picture or song may be asked for this long before it starts, to be there in time */
+/** A question's own picture or song may be asked for this long before it could start, to be there in time */
 export const QUIZ_FETCH_MS = 1_500;
+/** A question waits this long at most for everyone answering to have it loaded; then it starts all the same */
+export const QUIZ_LOAD_MAX_MS = 8_000;
 
 export const QUIZ_KINDS = ["sil", "crop", "intro", "meme"] as const;
 export type QuizKind = (typeof QUIZ_KINDS)[number];
 
 /**
- * A question as the pages have it: its number (0 the first), kind, when it starts and when answers stop; once it has
- * started, its three to pick from (a 方舟梗 question's own words too: ask); once someone got it right, or its time is
- * up, which was right and who got it first, how fast (ms from its start)
+ * A question as the pages have it: its number (0 the first), kind, when it could start at the soonest (from), when it
+ * starts and when answers stop (at, ends: while it waits for everyone to have it loaded, the latest they may be, and
+ * wait: how many of those answering have it, of how many); once it has started, its three to pick from (a 方舟梗
+ * question's own words too: ask); once someone got it right, or its time is up, which was right and who got it
+ * first, how fast (ms from its start)
  */
 export type QuizQuestion = {
   n: number;
   kind: QuizKind;
+  from: number;
   at: number;
   ends: number;
+  wait?: { ready: number; of: number };
   ask?: string;
   options?: string[];
   answer?: number;
@@ -183,24 +192,59 @@ export type QuizQuestion = {
 };
 
 /**
- * A quiz as the server keeps it (squad_rooms.mode_data), never sent as it is: each question's kind and times, its
- * three to pick from by id (a character's on passes, a song's, a 方舟梗 question's number), which is right, where a
- * part of a picture is cut (seed), and who got it right first and how fast
+ * A quiz as the server keeps it (squad_rooms.mode_data), never sent as it is: each question's kind, its three to pick
+ * from by id (a character's on passes, a song's, a 方舟梗 question's number), which is right, where a part of a picture
+ * is cut (seed), who got it right first and how fast, who answered; whose pages have it loaded (ready, by number) and
+ * when the last needed of them did (readyAt: its start decided). A quiz of before has its times kept (at, ends).
  */
 export type QuizData = {
-  qs: { kind: QuizKind; at: number; ends: number; ids: string[]; answer: number; seed: number; first?: { h: number; ms: number }; did?: number[] }[];
+  qs: {
+    kind: QuizKind;
+    ids: string[];
+    answer: number;
+    seed: number;
+    first?: { h: number; ms: number };
+    did?: number[];
+    ready?: number[];
+    readyAt?: number;
+    at?: number;
+    ends?: number;
+  }[];
 };
 
-/** When each question starts and its answers stop, from the quiz's start (at): one after another, each with its reveal */
-export function quizTimes(at: number, kinds: readonly QuizKind[]) {
-  let t = at + QUIZ_LEAD_MS;
-  return kinds.map((kind) => {
-    const q = { at: t, ends: t + (kind === "intro" ? QUIZ_INTRO_MS : QUIZ_ANSWER_MS) };
-    t = q.ends + QUIZ_REVEAL_MS;
-    return q;
+/** A question's times: from (the soonest it could start), at and ends (decided: as they are; else the latest they may be) */
+export type QuizTimed = { from: number; at: number; ends: number; decided: boolean };
+const quizLen = (kind: QuizKind) => (kind === "intro" ? QUIZ_INTRO_MS : QUIZ_ANSWER_MS);
+/**
+ * When each question starts and its answers stop, from the round's start (begun), at now: one after another, each
+ * with its reveal. A question starts at its from once everyone had it loaded by then (readyAt), as they all have it
+ * after, or QUIZ_LOAD_MAX_MS after its from at the latest; till one of those, it is not decided, and nor is any after it.
+ */
+export function quizSchedule(qs: QuizData["qs"], begun: number, now: number): QuizTimed[] {
+  let from = begun + QUIZ_LEAD_MS;
+  let open = true;
+  return qs.map((q) => {
+    let at: number;
+    let decided: boolean;
+    if (q.at !== undefined) {
+      at = q.at;
+      decided = true;
+    } else if (q.readyAt !== undefined) {
+      at = Math.max(from, q.readyAt);
+      decided = true;
+    } else {
+      at = from + QUIZ_LOAD_MAX_MS;
+      decided = now >= at;
+    }
+    decided &&= open;
+    open = decided;
+    const ends = q.ends ?? at + quizLen(q.kind);
+    const timed = { from, at, ends, decided };
+    from = ends + QUIZ_REVEAL_MS;
+    return timed;
   });
 }
-/** When a quiz is over (its results shown): after its last question's reveal */
+/** When a quiz is over (its results shown): after its last question's reveal (as late as it may be, while not decided) */
 export const quizUntil = (times: readonly { ends: number }[]) => (times.at(-1)?.ends ?? 0) + QUIZ_REVEAL_MS + QUIZ_RESULT_MS;
 
 /**

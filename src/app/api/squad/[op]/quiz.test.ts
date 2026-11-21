@@ -7,7 +7,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { PASS_CATALOG } from "@/lib/passCatalog";
-import { QUIZ_ANSWER_MS, QUIZ_INTRO_MS, QUIZ_LEAD_MS, QUIZ_REVEAL_MS, QUIZ_RESULT_MS, type QuizAsk, type QuizMode } from "@/lib/squadMode";
+import { QUIZ_ANSWER_MS, QUIZ_INTRO_MS, QUIZ_LEAD_MS, QUIZ_LOAD_MAX_MS, QUIZ_REVEAL_MS, QUIZ_RESULT_MS, type LobbyMode, type QuizAsk, type QuizMode } from "@/lib/squadMode";
 import { OPERATOR_ART_DIR } from "@/lib/server/env";
 import { loadMods } from "@/lib/server/admins";
 import { db } from "@/lib/server/db";
@@ -160,12 +160,12 @@ afterEach(async () => {
 });
 
 const quizOf = async (u: Pick<User, "id">) => (await viewOf(u)).mode as QuizMode;
-/** Each question's start, from a quiz opened at t0 with these kinds */
-const starts = (t0: number, kinds: string[]) => {
-  let t = t0 + QUIZ_LEAD_MS;
+/** Each question's times, from a quiz opened at t0 with these kinds, none of them loaded by anyone: each as late as it may be */
+const latest = (t0: number, kinds: string[]) => {
+  let from = t0 + QUIZ_LEAD_MS;
   return kinds.map((k) => {
-    const q = { at: t, ends: t + (k === "intro" ? QUIZ_INTRO_MS : QUIZ_ANSWER_MS) };
-    t = q.ends + QUIZ_REVEAL_MS;
+    const q = { from, at: from + QUIZ_LOAD_MAX_MS, ends: from + QUIZ_LOAD_MAX_MS + (k === "intro" ? QUIZ_INTRO_MS : QUIZ_ANSWER_MS) };
+    from = q.ends + QUIZ_REVEAL_MS;
     return q;
   });
 };
@@ -199,7 +199,7 @@ async function play(u: Pick<User, "id">, ready: Pick<User, "id">[] = [], now = c
 }
 
 describe("凯尔希随堂测", () => {
-  it("asks five questions one after another, each three to pick from once begun; the first right gets the point, the room told", async () => {
+  it("asks five questions one after another, each once everyone answering has it loaded (8 s late at most); the first right gets the point", async () => {
     const { host, a, b, room } = await cast();
     const heard = told(b);
     // no pictures here, and the songs to all: one of each kind there is; always the first, 方舟梗 when the songs are not
@@ -208,17 +208,29 @@ describe("凯尔希随堂测", () => {
     await play(a, [b]);
     const t0 = clock;
     const mode = await quizOf(b);
-    expect(mode).toMatchObject({ kind: "quiz", by: 2, begun: t0, in: [{ h: 2, combo: 0 }, { h: 3, combo: 0 }], until: starts(t0, Array(5).fill("meme"))[4].ends + QUIZ_REVEAL_MS + QUIZ_RESULT_MS });
-    expect(mode.questions.map((q) => [q.kind, q.at, q.ends])).toEqual(starts(t0, Array(5).fill("meme")).map((q) => ["meme", q.at, q.ends]));
+    const late = latest(t0, Array(5).fill("meme"));
+    expect(mode).toMatchObject({ kind: "quiz", by: 2, begun: t0, in: [{ h: 2, combo: 0 }, { h: 3, combo: 0 }], until: late[4].ends + QUIZ_REVEAL_MS + QUIZ_RESULT_MS });
+    // each as late as it may be while nobody has it; the first waiting for a and b
+    expect(mode.questions.map((q) => [q.kind, q.from, q.at, q.ends])).toEqual(late.map((q) => ["meme", q.from, q.at, q.ends]));
+    expect(mode.questions[0].wait).toEqual({ ready: 0, of: 2 });
+    expect(mode.questions[1]).not.toHaveProperty("wait");
     // nothing of a question till it begins
     expect(mode.questions[0]).not.toHaveProperty("options");
-    const q0 = mode.questions[0];
+    const from0 = late[0].from;
     expect(await post(b, "question", { n: 0 })).toMatchObject({ status: 409, body: { error: "这题还没开始。" } });
-    at(q0.at - 1_000);
+    at(from0 - 1_000);
     const asked = (await post(b, "question", { n: 0 })).body as unknown as QuizAsk;
-    expect(asked).toMatchObject({ n: 0, kind: "meme", at: q0.at, ends: q0.ends });
+    expect(asked).toMatchObject({ n: 0, kind: "meme", at: late[0].at, ends: late[0].ends });
     expect(asked.options).toHaveLength(3);
     expect(asked.ask).toMatch(/？$/);
+    // a has it, then b: both before its from, so it starts at its from; the room told as each has it
+    expect((await post(a, "loaded", { n: 0 })).status).toBe(200);
+    expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "quiz" } });
+    expect((await quizOf(b)).questions[0].wait).toEqual({ ready: 1, of: 2 });
+    expect((await post(b, "loaded", { n: 0 })).status).toBe(200);
+    const q0 = (await quizOf(b)).questions[0];
+    expect(q0).toMatchObject({ from: from0, at: from0, ends: from0 + QUIZ_ANSWER_MS });
+    expect(q0).not.toHaveProperty("wait");
     expect(await post(b, "answer", { n: 0, pick: 0 })).toMatchObject({ status: 409, body: { error: "这题还没开始。" } });
     at(q0.at + 800);
     const view = await quizOf(a);
@@ -239,20 +251,75 @@ describe("凯尔希随堂测", () => {
         { h: 3, combo: 0 },
       ]);
     }
-    // the host is not in it; one late is refused
+    // the host is not in it: never waited for, never answers
     expect(await post(host, "answer", { n: 0, pick: 0 })).toMatchObject({ status: 409, body: { error: "先加入才能答。" } });
-    const q1 = mode.questions[1];
+    expect(await post(host, "loaded", { n: 1 })).toMatchObject({ status: 409, body: { error: "先加入才能答。" } });
+    // the next: nobody has it, so it waits its longest, then starts by itself
+    const q1 = (await quizOf(a)).questions[1];
+    expect(q1).toMatchObject({ from: q0.ends + QUIZ_REVEAL_MS, at: q0.ends + QUIZ_REVEAL_MS + QUIZ_LOAD_MAX_MS, wait: { ready: 0, of: 2 } });
+    // the one after it not before it is decided
+    expect(await post(a, "loaded", { n: 2 })).toMatchObject({ status: 409, body: { error: "这题还没开始。" } });
+    at(q1.at - 100);
+    expect(await post(a, "answer", { n: 1, pick: 0 })).toMatchObject({ status: 409, body: { error: "这题还没开始。" } });
     at(q1.ends + 100);
+    expect((await quizOf(a)).questions[1]).not.toHaveProperty("wait");
     expect(await post(a, "answer", { n: 1, pick: 0, at: q1.ends + 100 })).toMatchObject({ status: 409, body: { error: "这题时间到了。" } });
     // in after its start: the next round, never this one
-    const q2 = mode.questions[2];
+    const q2 = (await quizOf(b)).questions[2];
     at(q2.at + 500);
     expect((await post(host, "modein", { in: true })).status).toBe(200);
     expect((await quizOf(b)).next).toEqual([1]);
     expect(await post(host, "answer", { n: 2, pick: 0 })).toMatchObject({ status: 409, body: { error: "这局开始以后才进来的，下一局再答。" } });
-    at(mode.questions[3].at + 100);
+    at((await quizOf(b)).questions[3].at + 100);
     expect(await post(host, "answer", { n: 3, pick: 0 })).toMatchObject({ status: 409, body: { error: "这局开始以后才进来的，下一局再答。" } });
     expect((await post(b, "answer", { n: 3, pick: 0 })).status).toBe(200);
+  });
+
+  it("waits only for those answering whose page is here, starting a question as the last of them has it; a late word changes nothing", async () => {
+    const { host, a, b } = await cast();
+    vi.stubEnv("LISTEN", "admins");
+    await play(a, [b]);
+    const from0 = (await quizOf(a)).questions[0].from;
+    // past its from; b's page went away: not waited for
+    at(from0 + 2_000);
+    expect((await post(b, "away")).status).toBe(200);
+    expect((await quizOf(a)).questions[0].wait).toEqual({ ready: 0, of: 1 });
+    expect((await post(a, "loaded", { n: 0 })).status).toBe(200);
+    const q0 = (await quizOf(a)).questions[0];
+    expect(q0).toMatchObject({ at: from0 + 2_000, ends: from0 + 2_000 + QUIZ_ANSWER_MS });
+    expect(q0.options).toHaveLength(3);
+    // b back, a word of theirs late: as it was
+    at(clock + 500);
+    expect((await post(b, "here")).status).toBe(200);
+    expect((await post(b, "loaded", { n: 0 })).status).toBe(200);
+    expect((await quizOf(a)).questions[0]).toMatchObject({ at: q0.at, ends: q0.ends });
+    // the next one may be said loaded now, the one before it decided; once each, once more nothing
+    expect((await post(a, "loaded", { n: 1 })).status).toBe(200);
+    expect((await post(a, "loaded", { n: 1 })).status).toBe(200);
+    expect((await quizOf(a)).questions[1].wait).toEqual({ ready: 1, of: 2 });
+    expect(await post(a, "loaded", { n: 7 })).toMatchObject({ status: 400 });
+    expect(await post(host, "loaded", { n: 1 })).toMatchObject({ status: 409 });
+  });
+
+  it("is over as its last question's results end, not as late as it might have been", async () => {
+    const { a } = await cast();
+    vi.stubEnv("LISTEN", "admins");
+    await play(a);
+    const latestEnd = (await quizOf(a)).until;
+    // a has each as soon as it may be asked for: each starts at its from
+    for (let n = 0; n < 5; n++) {
+      at((await quizOf(a)).questions[n].from - 1_000);
+      expect((await post(a, "loaded", { n })).status).toBe(200);
+    }
+    const q4 = (await quizOf(a)).questions[4];
+    expect(q4.at).toBe(q4.from);
+    const ends = q4.ends + QUIZ_REVEAL_MS + QUIZ_RESULT_MS;
+    expect(ends).toBe(latestEnd - 5 * QUIZ_LOAD_MAX_MS);
+    at(ends - 1);
+    expect(await sweepModes(clock)).toBe(0);
+    at(ends);
+    expect(await sweepModes(clock)).toBe(1);
+    expect((await viewOf(a)).mode as LobbyMode).toMatchObject({ kind: "quiz", wait: true, played: 1 });
   });
 
   it("puts 漏勺 on the lowest at the end, two or more in it, all of those tied there, none when all are; one asking for the next is not in it", async () => {

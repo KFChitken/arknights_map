@@ -611,7 +611,11 @@ async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof 
       .sort((a, b) => tapAt(a) - tapAt(b) || a.m.handle - b.m.handle)
       .map((r) => r.m.handle),
   };
-  if (room.mode === "quiz" && room.modeData) return { kind: "quiz", ...base, ...match, questions: await quizView(room.modeData as QuizData, now) };
+  if (room.mode === "quiz" && room.modeData) {
+    // a question waits for those answering whose pages are here
+    const needed = playing.filter((r) => !r.m.awayAt).map((r) => r.m.handle);
+    return { kind: "quiz", ...base, ...match, questions: await quizView(room.modeData as QuizData, begun, now, needed) };
+  }
   if (room.mode === "gift" && room.modeData && room.modeSong && room.modeSongAt) {
     // its last round's stop not given away by its end
     const data = room.modeData as GiftData;

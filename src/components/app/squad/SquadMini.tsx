@@ -99,7 +99,7 @@ export function stripOf(room: SquadRoom, mode: SquadMode, now: number, picks: Qu
   if (mode.kind === "quiz") {
     const ph = quizPhase(mode, now);
     if (ph.at === "results") return { kind, text: line(t.done), lit: false, acts: [] };
-    if (ph.at === "lead") return { kind, text: line(fmt(t.startsIn, { s: secs(ph.q.at - now) })), lit: false, acts: [] };
+    if (ph.at === "lead") return { kind, text: line(fmt(t.startsIn, { s: secs(ph.q.from - now) })), lit: false, acts: [] };
     const mine = picks?.at === mode.begun ? picks : null;
     const open = ph.at === "ask" && ph.q.answer === undefined && !mine?.picks[ph.q.n];
     return { kind, text: line(fmt(t.quizNo, { n: ph.q.n + 1, of: mode.questions.length })), lit: open, acts: [] };

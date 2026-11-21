@@ -3270,6 +3270,8 @@ export const zh = {
       asks: { sil: "这是谁的剪影？", crop: "这块立绘是谁身上的？", intro: "这是哪首歌的前奏？" },
       secs: "{s}s",
       loading: "出题中…",
+      /** A question waiting for everyone answering to have it loaded: how many have ({n}), of how many ({of}) */
+      waitLoad: "等大家把题目加载好…（{n}/{of}）",
       intro: "♪ 前奏放着",
       noSound: "听歌没开给你，听不到前奏",
       listening: "你在听歌，前奏放不出来",

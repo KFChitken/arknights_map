@@ -13,7 +13,6 @@ import {
   isModeKind,
   LOBBY_IDLE_MS,
   MODE_KINDS,
-  quizUntil,
   stackHeight,
   towerNow,
   type DanceSong,
@@ -36,7 +35,7 @@ import { raceInRoom, roomOf, stackInRoom, tellSquadPlay } from "./squad";
 import { forgetGift, giftRooms, makeGift, modeBots, passIn, reseatGift, roomBotsOf, settleGift, watchGift } from "./squadGift";
 import { clearMode, handLobby, lobbyTell, type LobbyNews } from "./squadLobby";
 import { forgetRace, makeRace, raceDue, raceLatest, raceReport, relaneRace, settleRace, watchRace } from "./squadRace";
-import { endQuiz, makeQuiz } from "./squadQuiz";
+import { endQuiz, makeQuiz, quizEnds, quizLatest } from "./squadQuiz";
 import { countBlock, dropIn } from "./squadStack";
 
 /**
@@ -285,7 +284,8 @@ export async function startMatch(user: Pick<UserRow, "id">, now = Date.now(), ra
         rand,
       );
       if (!quiz) throw refuse(409, T.server.squad.noQuiz);
-      const until = new Date(quizUntil(quiz.qs));
+      // as late as it may be over: each question waiting its longest for everyone to have it loaded (ended as it comes: settleQuizRoom)
+      const until = new Date(quizLatest(quiz, now));
       fields = { modeSong: null, modeSongAt: null, modeUntil: until, modeLast: until, modeData: { ...quiz, ...round } };
     } else if (room.mode === "race") {
       race = await makeRace(tx, room.id, players, now, rand);
@@ -387,6 +387,7 @@ export async function sweepModes(now = Date.now()) {
   // W 的礼物's rounds whose song stopped, and races over, with no one there to see it (their own timers gone with a process)
   for (const id of await giftRooms()) if ((await settleRoom(id, now)).ended) n += 1;
   for (const id of await raceRooms()) if ((await settleRaceRoom(id, now)).ended) n += 1;
+  for (const id of await quizRooms()) if ((await settleQuizRoom(id, now)).ended) n += 1;
   const over = await db
     .select()
     .from(squadRooms)
@@ -460,6 +461,34 @@ export async function passGift(user: Pick<UserRow, "id">, body: Record<string, u
   });
   await tellSquadPlay(done.roomId, { kind: "gift", h: done.h });
   return { now, at: done.at };
+}
+
+// ---- 凯尔希随堂测 ----
+
+/** The rooms with a round of 凯尔希随堂测 playing, for the sweep */
+async function quizRooms(): Promise<string[]> {
+  const rows = await db
+    .select({ id: squadRooms.id, data: squadRooms.modeData })
+    .from(squadRooms)
+    .where(and(isNull(squadRooms.endedAt), eq(squadRooms.mode, "quiz")));
+  return rows.filter((r) => r.data && !isLobbyData(r.data)).map((r) => r.id);
+}
+
+/**
+ * A round of 凯尔希随堂测 over by now, as it came (its questions waiting for everyone to have them loaded: squadQuiz.ts
+ * quizEnds), not as late as it might have been (its mode_until): waiting again from its end, the room told
+ */
+export async function settleQuizRoom(roomId: string, now = Date.now()) {
+  const done = await db.transaction(async (tx) => {
+    const [room] = await tx.select().from(squadRooms).where(eq(squadRooms.id, roomId)).for("update");
+    const round = room && !room.endedAt && room.mode === "quiz" ? roundOf(room) : null;
+    if (!room || !round) return null;
+    const ends = quizEnds(room.modeData as QuizData, begunOf(room), now);
+    if (ends === null || ends > now) return null;
+    return { news: await toLobby(tx, room, ends, now) };
+  });
+  if (done) await tellSquadPlay(roomId, backTell(done.news));
+  return { ended: Boolean(done) };
 }
 
 // ---- 企鹅物流急件赛 ----

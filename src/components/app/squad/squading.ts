@@ -24,7 +24,7 @@ import {
   type SquadRound,
   type SquadTell,
 } from "@/lib/squad";
-import { squadApi, SquadUnreached } from "@/lib/squadClient";
+import { squadApi, SquadRefused, SquadUnreached } from "@/lib/squadClient";
 import { BALL_BACK_MS, throwOf, type SquadOn } from "@/lib/squadFire";
 import {
   danceEnds,
@@ -32,6 +32,8 @@ import {
   danceMove,
   isMatchKind,
   LOBBY_ASK_AGAIN_MS,
+  QUIZ_FETCH_MS,
+  QUIZ_REVEAL_MS,
   RACE_CELL_MS,
   RACE_MAX_MS,
   RACE_REPORT_JUMPS,
@@ -45,11 +47,14 @@ import {
   stackShift,
   stackNow,
   stackSwing,
+  type QuizAsk,
+  type QuizMode,
   type SoloDance,
   type SquadModeKind,
 } from "@/lib/squadMode";
 import { readDance, type DanceBeats } from "@/lib/dance";
 import { WorldError, type TouchResult } from "@/lib/world/types";
+import { listenLiteNow } from "../listening";
 import { squadDing, squadPop } from "./squadSound";
 import { nameOf, weightAfterName } from "../fish/words";
 
@@ -458,6 +463,7 @@ function setRoom(next: SquadRoom | null) {
   if (next) freedBy(before, next);
   if (!next || next.state !== "go") roundUnseen.set(false);
   room.set(next && withWant(next));
+  quizWatch();
 }
 
 let loading: Promise<SquadRoom | null> | null = null;
@@ -1266,6 +1272,140 @@ export async function squadStackDrop() {
 export const squadQuizAsk = (n: number) => timed(() => squadApi.question(n));
 
 /**
+ * 凯尔希随堂测's questions on this page, whether its card is open or not, by round (begun): each one's three and its
+ * picture or song, asked for from QUIZ_FETCH_MS before it could start (once the one before it is decided), then
+ * loaded (its picture drawn; its intro's song ready to play), and, for one answering, said to the server (loaded): a
+ * question starts once everyone answering has it (src/lib/server/squadQuiz.ts quizLoaded). The room is read again as
+ * a question's time is up (for its answer) and as one waiting for the slowest starts by itself. err: why one could not
+ * be had, after its tries.
+ */
+export type QuizAsks = { begun: number; got: Readonly<Record<number, QuizAsk>>; err: string | null };
+const NO_QUIZ_ASKS: QuizAsks = { begun: 0, got: {}, err: null };
+const quizAsks = kept<QuizAsks>(NO_QUIZ_ASKS);
+export const useSquadQuizAsks = () => useSyncExternalStore(quizAsks.on, quizAsks.get, () => NO_QUIZ_ASKS);
+export const squadQuizAsksNow = quizAsks.get;
+/** The page looks at the quiz this often while one plays */
+const QUIZ_TICK_MS = 200;
+/** A question is asked for this long after its window opens (the server's clock as the page has it may be off a little) */
+const ASK_AFTER_MS = 120;
+/** Asked for (or said loaded) again this long after a try that did not go, this many times at most */
+const ASK_AGAIN_MS = 400;
+const ASK_TRIES = 6;
+/** The room is read again this long after a question's time is up (or its wait), for what it has */
+const LOOK_AFTER_MS = 150;
+/** A question's song is waited for this long at most before it is said loaded all the same */
+const SONG_WAIT_MS = 5_000;
+/** Each question's steps on this page, by round and number: asked for (tries, one on its way), said loaded (tries), the room read again */
+type QuizStep = { tries: number; asking: boolean; said: number; saying: boolean; looked: Set<string> };
+const quizSteps = new Map<string, QuizStep>();
+let quizTimer = 0;
+
+/** A question's picture drawn, or its song ready to play (the one this page plays: 省流量's smaller copy where it is on) */
+async function quizMedia(ask: QuizAsk) {
+  if (ask.pic && typeof Image !== "undefined") {
+    const img = new Image();
+    img.src = ask.pic;
+    await img.decode().catch(() => {});
+  }
+  const src = ask.kind === "intro" && ask.url ? (ask.lite && listenLiteNow() ? ask.lite : ask.url) : null;
+  if (src && typeof Audio !== "undefined") {
+    const a = Object.assign(new Audio(), { preload: "auto" });
+    await new Promise<void>((done) => {
+      const t = window.setTimeout(done, SONG_WAIT_MS);
+      const ok = () => {
+        window.clearTimeout(t);
+        done();
+      };
+      a.addEventListener("canplay", ok, { once: true });
+      a.addEventListener("error", ok, { once: true });
+      a.src = src;
+      a.load();
+    });
+  }
+}
+
+/** The quiz looked at while one plays (from setRoom): its questions asked for, loaded and said so in time */
+function quizWatch() {
+  const mode = room.get()?.mode;
+  if (quizTimer || mode?.kind !== "quiz" || mode.wait) return;
+  quizTimer = window.setTimeout(quizTick, QUIZ_TICK_MS) || -1;
+}
+
+function quizTick() {
+  quizTimer = 0;
+  const r = room.get();
+  const mode = r?.mode;
+  if (!r || mode?.kind !== "quiz" || mode.wait) return;
+  const now = squadServerNow();
+  const qs = mode.questions;
+  const last = qs.at(-1);
+  if (!last || (last.wait === undefined && now >= last.ends + QUIZ_REVEAL_MS)) return;
+  const answering = mode.in.some((m) => m.h === r.you);
+  if (quizAsks.get().begun !== mode.begun) quizAsks.set({ begun: mode.begun, got: {}, err: null });
+  // the one waiting for everyone to have it loaded: none after it is decided yet
+  const waiting = qs.findIndex((q) => q.wait !== undefined);
+  for (const q of qs) {
+    if (waiting >= 0 && q.n > waiting) break;
+    const key = `${mode.begun}:${q.n}`;
+    const step = quizSteps.get(key) ?? { tries: 0, asking: false, said: 0, saying: false, looked: new Set<string>() };
+    quizSteps.set(key, step);
+    const got = quizAsks.get().got[q.n];
+    if (!got && !step.asking && step.tries < ASK_TRIES && now >= q.from - QUIZ_FETCH_MS + ASK_AFTER_MS && now < q.ends + QUIZ_REVEAL_MS) {
+      step.asking = true;
+      step.tries += 1;
+      void quizAskAndLoad(mode, q.n, step, answering);
+    }
+    // its wait over by itself, or its time up: the room again, for what it has now
+    for (const [why, when] of [
+      ["wait", q.wait ? q.at : Number.POSITIVE_INFINITY],
+      ["answer", q.answer === undefined ? q.ends : Number.POSITIVE_INFINITY],
+    ] as const) {
+      if (now >= when + LOOK_AFTER_MS && !step.looked.has(why)) {
+        step.looked.add(why);
+        void loadSquadRoom().catch(() => {});
+      }
+    }
+  }
+  quizWatch();
+}
+
+/** Question n asked for, loaded, and (for one answering) said loaded; a try that did not go, again in a while */
+async function quizAskAndLoad(mode: QuizMode, n: number, step: QuizStep, answering: boolean) {
+  let ask: QuizAsk;
+  try {
+    ask = await squadQuizAsk(n);
+  } catch (e) {
+    window.setTimeout(() => (step.asking = false), ASK_AGAIN_MS);
+    if (step.tries >= ASK_TRIES && quizAsks.get().begun === mode.begun) quizAsks.set({ ...quizAsks.get(), err: e instanceof WorldError ? e.message : T.map.common.tryAgain });
+    return;
+  }
+  await quizMedia(ask);
+  step.asking = false;
+  const was = quizAsks.get();
+  if (was.begun !== mode.begun) return;
+  quizAsks.set({ ...was, got: { ...was.got, [n]: ask } });
+  if (answering) void quizSayLoaded(mode.begun, n, step);
+}
+
+/** Question n said loaded to the server, again in a while when that did not go (not when refused for good) */
+async function quizSayLoaded(begun: number, n: number, step: QuizStep) {
+  if (step.saying || step.said >= ASK_TRIES) return;
+  step.saying = true;
+  try {
+    await timed(() => squadApi.loaded(n));
+    step.said = ASK_TRIES;
+  } catch (e) {
+    step.said += 1;
+    // the network, or the one before not decided yet here: again in a while; anything else is for good
+    const again = e instanceof SquadUnreached || (e instanceof WorldError && !(e instanceof SquadRefused));
+    if (again) window.setTimeout(() => quizAsks.get().begun === begun && void quizSayLoaded(begun, n, step), ASK_AGAIN_MS);
+    else step.said = ASK_TRIES;
+  } finally {
+    step.saying = false;
+  }
+}
+
+/**
  * Your answer (pick: 0–2) to question n of the quiz playing, now on the server's clock as this page has it: shown at
  * once as picked, then as the server judged it (taken back if it was refused); once a question. Your point, if it was
  * the first right, comes with the room (as everyone's does). Null when nothing was sent.
@@ -1408,6 +1548,10 @@ export function forgetSquadPage() {
   raceOwn = null;
   raceSeen = null;
   solo.set(null);
+  if (quizTimer > 0) window.clearTimeout(quizTimer);
+  quizTimer = 0;
+  quizSteps.clear();
+  quizAsks.set(NO_QUIZ_ASKS);
   window.clearTimeout(roundTimer);
   talkOpen.set(false);
   setRoom(null);

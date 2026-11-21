@@ -122,7 +122,7 @@ const quiz = (more: Partial<QuizMode> = {}): QuizMode => ({
     { h: 1, combo: 0 },
     { h: 2, combo: 0 },
   ],
-  questions: [{ n: 0, kind: "sil", at: NOW - 1_000, ends: NOW + 2_000 }],
+  questions: [{ n: 0, kind: "sil", from: NOW - 1_000, at: NOW - 1_000, ends: NOW + 2_000 }],
   ...more,
 });
 const nothing = () => {};

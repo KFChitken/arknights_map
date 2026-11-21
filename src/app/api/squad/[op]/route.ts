@@ -34,7 +34,7 @@ import {
 import { squadOpen } from "@/lib/server/squadOpen";
 import { fireBoard } from "@/lib/server/fireBoard";
 import { stackBoard } from "@/lib/server/stackBoard";
-import { answerQuiz, askQuestion } from "@/lib/server/squadQuiz";
+import { answerQuiz, askQuestion, quizLoaded } from "@/lib/server/squadQuiz";
 import { danceSong, joinMode, openMode, passGift, runRace, soloDance, stackDrop, startMatch } from "@/lib/server/squadModes";
 import { addWood, hitBack, shakeOff, throwAt } from "@/lib/server/squadPlay";
 import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
@@ -82,6 +82,7 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST fireboard {week}         火焰周榜 (src/lib/server/fireBoard.ts): this week's or last week's, and your room on it
  *   POST question {n}             凯尔希随堂测 (src/lib/server/squadQuiz.ts): question n's three, and its picture or song
  *   POST answer {n, pick, at?}    凯尔希随堂测: an answer to question n, at the server's clock as the page has it
+ *   POST loaded {n}               凯尔希随堂测: this page has question n loaded (it starts once everyone answering has)
  *   POST pass {at?}               传: W 的礼物 on from your seat
  *   POST run {taps, jumps, in?}   企鹅物流急件赛: a racer's 加油 counts and 跳s since their last (every 2 s; in: they are in)
  *   POST stack {do, round, at?}   基建加盖 (src/lib/server/squadStack.ts): 放 your roach on the room's tower (drop)
@@ -133,6 +134,7 @@ const OPS = {
   fireboard: { method: "POST", perMinute: 30 },
   question: { method: "POST", perMinute: 40 },
   answer: { method: "POST", perMinute: 40 },
+  loaded: { method: "POST", perMinute: 30 },
   pass: { method: "POST", perMinute: 120 },
   run: { method: "POST", perMinute: 60 },
   stack: { method: "POST", perMinute: 120 },
@@ -165,6 +167,7 @@ const TALKING: ReadonlySet<Op> = new Set<Op>([
   "modein",
   "start",
   "answer",
+  "loaded",
   "pass",
   "run",
   "stack",
@@ -265,6 +268,8 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await askQuestion(user, body));
     case "answer":
       return answer(await answerQuiz(user, body));
+    case "loaded":
+      return answer(await quizLoaded(user, body));
     case "pass":
       return answer(await passGift(user, body));
     case "run":
