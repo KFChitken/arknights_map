@@ -24,18 +24,22 @@ export class SquadRefused extends WorldError {
   }
 }
 
+/** The server not reached, or too busy to answer: the network, too many asks (429), its own trouble (5xx); worth asking again later */
+export class SquadUnreached extends WorldError {}
+
 async function call<R>(op: string, init: RequestInit): Promise<R> {
   let res: Response;
   try {
     res = await apiFetch(`/api/squad/${op}`, init);
   } catch {
-    throw new WorldError(T.requests.offline);
+    throw new SquadUnreached(T.requests.offline);
   }
   const json = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
   if (res.status === 401) throw new SignInNeeded(json?.error ?? T.requests.signIn);
   if (res.status === 428 && json?.code === AGE_CHECK) throw new AgeCheckNeeded(ageCheckNeeded());
   if (res.status === 428) throw new ConsentNeeded(json?.error ?? T.requests.reconsent);
   if (!res.ok && json?.code && json.error) throw new SquadRefused(json.error, json.code);
+  if (res.status === 429 || res.status >= 500) throw new SquadUnreached(json?.error ?? T.requests.serverTrouble);
   if (!res.ok || !json) throw new WorldError(json?.error ?? T.requests.serverTrouble);
   return json as R;
 }

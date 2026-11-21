@@ -2370,6 +2370,8 @@ export const zh = {
       copy: "复制",
       copied: "同盟密钥复制好了",
       copyFailed: "复制不了，长按密钥自己复制吧",
+      /** At the room's top once it could not be read again (tried twice more), a tap reads it again */
+      stale: "房间没刷新出来，点这里再试",
       keyHint: "游戏里：同盟模拟 → 加入同盟 → 粘贴，进去以后点下面的「准备」",
       inGame: "我进同盟了，准备！",
       inGameOn: "✓ 准备好了（点一下取消）",
@@ -5386,6 +5388,8 @@ export const zh = {
     later: "以后再说",
     collapse: "收起",
     quoted: "「{text}」",
+    /** At the top of a room (一起卫戍's, 一起听's player) while the page's live connection is down a few seconds */
+    streamDown: "连接断了，正在重连…",
     cloneN: "克隆体 {n}",
     details: "详情",
     saving: "保存中…",

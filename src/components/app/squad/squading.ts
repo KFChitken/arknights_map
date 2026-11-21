@@ -23,7 +23,7 @@ import {
   type SquadRound,
   type SquadTell,
 } from "@/lib/squad";
-import { squadApi } from "@/lib/squadClient";
+import { squadApi, SquadUnreached } from "@/lib/squadClient";
 import { BALL_BACK_MS, throwOf, type SquadOn } from "@/lib/squadFire";
 import {
   beatOff,
@@ -446,13 +446,56 @@ export async function loadSquadRoom(): Promise<SquadRoom | null> {
         if (r) clocked(r.now, sent, Date.now());
         setRoom(r);
       } while (again);
+      roomRead();
       return r;
+    } catch (e) {
+      if (e instanceof SquadUnreached) roomUnread();
+      throw e;
     } finally {
       loading = null;
     }
   })();
   return loading;
 }
+
+/**
+ * The room not read again (the network, or the server too busy: SquadUnreached): since when, and whether this page
+ * stopped asking by itself (after STALE_RETRY_MS: 5 s, then 15 s), the room's top then saying so, a tap reading it
+ * again (retrySquadRoom). Read, it goes. A 429 is waited out the same, never asked for sooner.
+ */
+export type SquadStale = { at: number; gaveUp: boolean };
+const STALE_RETRY_MS = [5_000, 15_000];
+const stale = kept<SquadStale | null>(null);
+let staleTries = 0;
+let staleTimer: number | undefined;
+export const useSquadStale = () => useSyncExternalStore(stale.on, stale.get, () => null);
+/** How the room stands as read (the tests) */
+export const squadStaleNow = stale.get;
+
+function roomUnread() {
+  const was = stale.get();
+  // one more try is on its way, or this page stopped trying till a tap
+  if (staleTimer !== undefined || was?.gaveUp) return;
+  const wait = STALE_RETRY_MS[staleTries];
+  const at = was?.at ?? Date.now();
+  if (wait === undefined) return stale.set({ at, gaveUp: true });
+  staleTries += 1;
+  stale.set({ at, gaveUp: false });
+  staleTimer = window.setTimeout(() => {
+    staleTimer = undefined;
+    void loadSquadRoom().catch(() => {});
+  }, wait);
+}
+
+function roomRead() {
+  if (staleTimer !== undefined) window.clearTimeout(staleTimer);
+  staleTimer = undefined;
+  staleTries = 0;
+  stale.set(null);
+}
+
+/** 「房间没刷新出来，点这里再试」: the room read again now (once; still not read, it says so on) */
+export const retrySquadRoom = () => loadSquadRoom().catch(() => {});
 
 /** One in the room changed as told (round, pose): taken as it is, or the room read again when they are not known yet */
 function patchMember(r: SquadRoom, h: number | undefined, change: Partial<SquadMember>) {
@@ -1144,6 +1187,8 @@ export function forgetSquadPage() {
   // the server's clock as learnt: learnt again from the next answers
   offs.length = 0;
   off = 0;
+  // and no room to read again
+  roomRead();
   roundWant = null;
   raceTaps = 0;
   if (raceTimer) window.clearTimeout(raceTimer);

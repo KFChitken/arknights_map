@@ -94,6 +94,7 @@ import {
   type ListenUpNext,
 } from "./listening";
 import Sheet from "./Sheet";
+import StreamDown from "./StreamDown";
 import { squadSentWords } from "./squad/SquadListen";
 import { loadSquadRoom, useSquadRoom } from "./squad/squading";
 import "./listen.css";
@@ -276,6 +277,7 @@ function ListenBody({ paused, roomMax, mode, disco, acts }: BodyProps) {
   const doneAsk = () => setAsked(null);
   return (
     <div className={`lp${room ? " in-room" : ""}`}>
+      {room && <StreamDown className="lp-down" />}
       <Player paused={paused} />
       <Rounds paused={paused} disco={disco} asking={ask === "round"} onAsk={() => flipAsk("round")} />
       {room && ask === "round" && <EndAsk room={room} onDone={doneAsk} />}

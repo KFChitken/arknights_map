@@ -55,6 +55,7 @@ import { CoreBadge, CoreChips, extraNames, LevelBadge, LevelChips, levelName, St
 import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
 import SmallFlame from "./SmallFlame";
 import SmallTower from "./SmallTower";
+import SquadStale from "./SquadStale";
 import SquadMateCard from "./SquadMateCard";
 import { ListenRow } from "./SquadListen";
 import SquadPlays from "./SquadPlays";
@@ -1232,6 +1233,7 @@ function RoomView({
       }
     >
       <Floats />
+      <SquadStale className="in-sheet" />
       <SquadToMe room={room} className="in-sheet" onPick={() => setPicking("strategy")} />
       {room.host && asking === "hostMenu" && (
         <div className="sq-pop sq-hostmenu" role="group" aria-label={T.squad.room.hostMenu}>

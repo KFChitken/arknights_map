@@ -11,6 +11,7 @@ import { useOperatorArt } from "../OperatorNames";
 import { useAbove, useWide } from "./SquadBar";
 import SmallFlame from "./SmallFlame";
 import SmallTower from "./SmallTower";
+import SquadStale from "./SquadStale";
 import SquadMateCard from "./SquadMateCard";
 import SquadPipButton from "./SquadPipButton";
 import { ListenAsk, ListenNote } from "./SquadListen";
@@ -426,6 +427,7 @@ export default function SquadFight({
               {T.squad.fight.expand}
             </button>
           </div>
+          <SquadStale className="in-bar" />
           {waiting && toMe && (
             <SquadToMe
               room={room}

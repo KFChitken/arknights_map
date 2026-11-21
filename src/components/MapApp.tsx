@@ -183,6 +183,7 @@ import {
   useSquadRoom,
   useSquadRounds,
 } from "./app/squad/squading";
+import { streamDropped, streamUp } from "./app/stream";
 import type { ListenCallItem, ListenCard, ListenInvite } from "./app/ListenOverlay";
 import type { ListenActs } from "./app/ListenPanel";
 import DiscoHost from "./app/DiscoHost";
@@ -1819,8 +1820,13 @@ export default function MapApp({
     events.addEventListener("squad", (e) => heardSquad((e as MessageEvent).data));
     // nudges sent while the connection was down are lost, so look once it is back: spread over a minute, as
     // after a restart every page comes back at once
-    events.addEventListener("error", () => (dropped = true));
+    // and while it is down, a room's top says so after a few seconds (src/components/app/stream.ts)
+    events.addEventListener("error", () => {
+      dropped = true;
+      streamDropped();
+    });
     events.addEventListener("open", () => {
+      streamUp();
       if (dropped) {
         later(60_000);
         listenStreamBack();
@@ -1841,6 +1847,7 @@ export default function MapApp({
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       events.close();
+      streamUp();
       window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
