@@ -1624,7 +1624,7 @@ function MemberTile({
   move?: SquadMoveDone;
   toMe?: SquadMoveDone;
   open: boolean;
-  /** In the mode playing (玩点什么): 在跳 or 在答, its roach dancing in 龙门广场舞 */
+  /** In the mode playing (玩点什么): 在答, 在传 or 在跑 */
   inMode?: SquadModeKind;
   /** Ready for a match waiting for people: 等开局 */
   readyMode?: boolean;
@@ -1645,7 +1645,7 @@ function MemberTile({
       {named && <span key={named.key} className="sq-named" aria-hidden="true" />}
       {m.bot && <span className="bt">{T.squad.bot.tag}</span>}
       <Bubble line={line} lift={lift} to={line?.to === undefined ? null : lineTo?.(line.to)} />
-      <SquadRoach m={inMode === "dance" && m.pose !== 1 ? { ...m, pose: 1 } : m} size={44} line={line} move={move} toMe={toMe} play="tile" />
+      <SquadRoach m={m} size={44} line={line} move={move} toMe={toMe} play="tile" />
       {afk !== null ? (
         <span className="dz afkt">{fmt(T.squad.afk.for, { n: Math.floor(afk / 60_000) })}</span>
       ) : inMode ? (

@@ -266,7 +266,7 @@ describe("凯尔希随堂测's card", () => {
   it("is a match of 玩点什么: 发起 while nothing plays, 下一局 to one not in a round of it", () => {
     expect(modeRow(room(), "quiz", NOW)).toEqual({ kind: "quiz", label: "发起", does: "open" });
     expect(modeRow(room({ mode: quiz({ in: [{ h: 2, combo: 0 }], by: 2 }) }), "quiz", NOW)).toEqual({ kind: "quiz", label: "下一局", does: "next", tag: "下一局" });
-    expect(modeRow(room({ mode: quiz() }), "dance", NOW).does).toBeNull();
+    expect(modeRow(room({ mode: quiz() }), "gift", NOW).does).toBeNull();
   });
 });
 

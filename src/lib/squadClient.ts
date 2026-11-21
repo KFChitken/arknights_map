@@ -4,7 +4,7 @@ import { AGE_CHECK, ageCheckNeeded } from "./consent";
 import type { PassesDot } from "./passes";
 import type { SquadBotDo, SquadCard, SquadFriend, SquadInviteSent, SquadList, SquadMove, SquadPose, SquadRoom, SquadRound } from "./squad";
 import type { FireBoard, SquadFire } from "./squadFire";
-import type { DanceSong, QuizAnswered, QuizAsk, SquadModeKind, StackBoard } from "./squadMode";
+import type { DanceSong, QuizAnswered, QuizAsk, SoloDance, SquadModeKind, StackBoard } from "./squadMode";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "./world/types";
 
 /**
@@ -113,14 +113,14 @@ export const squadApi = {
   shake: () => call<{ now: number }>("shake", post({})),
   /** 玩点什么: open a mode (none playing) */
   mode: (kind: SquadModeKind) => call<{ now: number }>("mode", post({ kind })),
-  /** 加入 the mode playing (in), or 不跳了，去围观 */
+  /** A match's 准备 (in) or 不玩了; while a round plays, 下一局算我 or out to watch it */
   modeIn: (into: boolean) => call<{ now: number }>("modein", post({ in: into })),
   /** 开始: a match's initiator starts a round with those ready */
   start: () => call<{ now: number }>("start", post({})),
-  /** 跳: a tap in 龙门广场舞, at the server's clock as this page has it; on the beat or not, the combo after it */
-  tap: (at: number) => call<{ now: number; combo: number; ok: boolean; counted: boolean }>("tap", post({ at })),
-  /** 龙门广场舞's song: its beats, and its link to one 听歌 is open to */
+  /** W 的礼物's song: its beats, and its link to one 听歌 is open to */
   song: () => call<DanceSong>("song", post({})),
+  /** 龙门广场舞, danced alone: a song for it (not one of `not`, unless 一起听's), its link, two 人机 beside one alone */
+  dance: (not: string[]) => call<SoloDance>("dance", post({ not })),
   /** 凯尔希随堂测: question n's three (a 方舟梗 question's words too) and its picture or song, from just before it starts */
   question: (n: number) => call<QuizAsk>("question", post({ n })),
   /** 凯尔希随堂测: your answer (pick: 0–2) to question n, at the server's clock as this page has it */

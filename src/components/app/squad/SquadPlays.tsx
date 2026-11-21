@@ -7,17 +7,18 @@ import { fireLevel, WOOD_MAX, woodNow } from "@/lib/squadFire";
 import { isMatchKind, MODE_KINDS, stackNow, type SquadModeKind } from "@/lib/squadMode";
 import { WorldError } from "@/lib/world/types";
 import { openFishWin, useFishWin } from "../fish/winStore";
-import { openSquadFire, openSquadModeCard, openSquadStack, squadModeIn, squadOpenMode, squadServerNow } from "./squading";
+import { openSquadFire, openSquadModeCard, openSquadStack, squadDanceOpen, squadModeIn, squadOpenMode, squadServerNow, squadSoloNow } from "./squading";
 import "./squadModes.css";
 
 /**
  * 「玩」 in a room of 一起卫戍 (the room's sheet on a phone, the bar's panel on a computer): every game there is, each
  * a tile with its icon and its name, in two groups. Those always there (随时能玩): 钓鳞, its icon showing how its line
  * stands (none in the water, in it, a bite); 添柴, the fire (out, small, big, roaring) with its level and the sticks
- * in your hand; 基建加盖, the room's tower with its height. Then the modes of 玩点什么, one at a time: they open, join
- * or show the one playing as their tile is tapped; one that cannot be opened now says why under the tiles. A match
- * (凯尔希随堂测, W 的礼物, 企鹅物流急件赛) waits for people first: its tile says how many are ready (等人 n/4) and readies
- * you; while a round plays, one not in it asks for the next (下一局).
+ * in your hand; 基建加盖, the room's tower with its height; 龙门广场舞, danced alone (not while a match's round you are
+ * in plays: said under the tiles). Then the matches of 玩点什么, one at a time: they open, ready you or show the one
+ * playing as their tile is tapped; one that cannot be opened now says why under the tiles. A match (凯尔希随堂测, W
+ * 的礼物, 企鹅物流急件赛) waits for people first: its tile says how many are ready (等人 n/4) and readies you; while a
+ * round plays, one not in it asks for the next (下一局).
  */
 
 /**
@@ -99,19 +100,22 @@ export function FirePlayIcon({ look }: { look: FireLook }) {
   );
 }
 
+/** 龙门广场舞: two notes and two sparkles */
+export function DancePlayIcon() {
+  return (
+    <svg className="pg-ico dance" viewBox="0 0 40 40" aria-hidden="true">
+      <path d="M14 8l15-4v20" fill="none" stroke="#b4235a" strokeWidth="2.6" strokeLinejoin="round" />
+      <path d="M14 8v21" stroke="#b4235a" strokeWidth="2.6" />
+      <ellipse cx="10.5" cy="29.5" rx="4.6" ry="3.6" fill="#b4235a" />
+      <ellipse cx="25.5" cy="24.5" rx="4.6" ry="3.6" fill="#b4235a" />
+      <path d="M33 30l1.2 2.8 2.8 1.2-2.8 1.2-1.2 2.8-1.2-2.8-2.8-1.2 2.8-1.2Z" fill="#ff7ac0" />
+      <path d="M6 10l.9 2 2 .9-2 .9-.9 2-.9-2-2-.9 2-.9Z" fill="#ff7ac0" />
+    </svg>
+  );
+}
+
 /** A mode of 玩点什么's own icon */
 export function ModePlayIcon({ kind }: { kind: SquadModeKind }) {
-  if (kind === "dance")
-    return (
-      <svg className="pg-ico dance" viewBox="0 0 40 40" aria-hidden="true">
-        <path d="M14 8l15-4v20" fill="none" stroke="#b4235a" strokeWidth="2.6" strokeLinejoin="round" />
-        <path d="M14 8v21" stroke="#b4235a" strokeWidth="2.6" />
-        <ellipse cx="10.5" cy="29.5" rx="4.6" ry="3.6" fill="#b4235a" />
-        <ellipse cx="25.5" cy="24.5" rx="4.6" ry="3.6" fill="#b4235a" />
-        <path d="M33 30l1.2 2.8 2.8 1.2-2.8 1.2-1.2 2.8-1.2-2.8-2.8-1.2 2.8-1.2Z" fill="#ff7ac0" />
-        <path d="M6 10l.9 2 2 .9-2 .9-.9 2-.9-2-2-.9 2-.9Z" fill="#ff7ac0" />
-      </svg>
-    );
   if (kind === "quiz")
     return (
       <svg className="pg-ico quiz" viewBox="0 0 40 40" aria-hidden="true">
@@ -171,6 +175,7 @@ export function PlayGrid({
   onFish,
   onFire,
   onStack,
+  onDance,
   onMode,
 }: {
   room: SquadRoom;
@@ -182,6 +187,7 @@ export function PlayGrid({
   onFish: () => void;
   onFire: () => void;
   onStack: () => void;
+  onDance: () => void;
   onMode: (row: ModeRow) => void;
 }) {
   const t = T.squad.plays;
@@ -217,6 +223,12 @@ export function PlayGrid({
             <em className="lv">{fmt(t.layers, { n: tower.fell ? 0 : tower.n })}</em>
           </span>
           <b>{T.squad.stack.title}</b>
+        </button>
+        <button type="button" className="tile k-dance" aria-label={T.squad.dance.title} disabled={busy} onClick={onDance}>
+          <span className="pic">
+            <DancePlayIcon />
+          </span>
+          <b>{T.squad.dance.title}</b>
         </button>
       </div>
       <p className="grp">{t.oneAtATime}</p>
@@ -306,6 +318,12 @@ export default function SquadPlays({ room, onDone }: { room: SquadRoom; onDone?:
       onStack={() => {
         openSquadStack();
         onDone?.();
+      }}
+      onDance={() => {
+        setMsg(null);
+        // its card opens at once, its song on the way; in a match's round you are in, said here
+        squadDanceOpen().catch((e: unknown) => setMsg(e instanceof WorldError ? e.message : T.map.common.tryAgain));
+        if (squadSoloNow()) onDone?.();
       }}
       onMode={(row) => void mode(row)}
     />

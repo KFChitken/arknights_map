@@ -2,10 +2,10 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { SquadMember, SquadRoom } from "@/lib/squad";
-import { GIFT_HOLD_MS, RACE_LEAD_MS, type DanceMode, type GiftMode, type QuizAsk, type QuizMode, type RaceMode, type SquadMode, type SquadStack } from "@/lib/squadMode";
+import { GIFT_HOLD_MS, RACE_LEAD_MS, type GiftMode, type QuizAsk, type QuizMode, type RaceMode, type SquadStack } from "@/lib/squadMode";
 import { MINI_H, MINI_W, miniWanted, pipSupported } from "./miniState";
-import { headOf, lastLines, MiniView, stackStrip, stripOf } from "./SquadMini";
-import type { QuizPicks, SquadLine } from "./squading";
+import { headOf, lastLines, MiniView, soloStrip, stackStrip, stripOf } from "./SquadMini";
+import type { QuizPicks, SoloDanceNow, SquadLine } from "./squading";
 
 const NOW = Date.parse("2026-11-20T20:00:00+08:00");
 const member = (h: number, more: Partial<SquadMember> = {}): SquadMember => ({
@@ -69,7 +69,6 @@ const tower = (more: Partial<SquadStack> = {}): SquadStack => ({
   ...more,
 });
 /** 龙门广场舞, 企鹅物流 (h 2) dancing */
-const dance = (more: Partial<DanceMode> = {}): DanceMode => ({ kind: "dance", ...base, in: [{ h: 2, combo: 0 }], song: "s1", name: "Song", songAt: NOW - 1_000, ...more });
 /** W 的礼物's first round going since 1 s ago, its gift starting at your seat (0) */
 /** A match's round: begun as it was opened, the first of it, nobody asking for the next */
 const round = { begun: base.at, played: 0, next: [] as number[] };
@@ -172,9 +171,9 @@ describe("when the room shows small", () => {
 });
 
 describe("the small room's strip", () => {
-  it("asks one not in it to join, saying how many are", () => {
-    const s = stripOf(room(), dance(), NOW);
-    expect(s).toEqual({ kind: "dance", text: "广场舞 · 1 人在玩", lit: false, acts: [{ act: "join", label: "加入", on: true }] });
+  it("asks one not in a round for the next, saying how many play", () => {
+    const s = stripOf(room(), race({ in: [{ h: 2, combo: 0 }], lanes: race().lanes.slice(1) }), NOW);
+    expect(s).toEqual({ kind: "race", text: "急件赛 · 1 人在玩", lit: false, acts: [{ act: "join", label: "下一局算我", on: true }] });
   });
 
   it("lights W 的礼物 while the gift is in your hands, with 传", () => {
@@ -203,12 +202,19 @@ describe("the small room's strip", () => {
     expect(stackStrip(fell, NOW + 2_000)).toMatchObject({ text: "基建加盖 · 0 层", acts: [{ act: "drop", on: true }] });
   });
 
-  it("lights 随堂测 while a question waits for your answer, not once you picked; the dance with its combo and 跳", () => {
+  it("lights 随堂测 while a question waits for your answer, not once you picked", () => {
     expect(stripOf(room(), quiz(), NOW)).toMatchObject({ text: "随堂测 · 第 1 / 1 题", lit: true, acts: [] });
     const picked: QuizPicks = { at: base.at, picks: { 0: { pick: 1 } } };
     expect(stripOf(room(), quiz(), NOW, picked).lit).toBe(false);
-    const mine: SquadMode = dance({ in: [{ h: 1, combo: 7 }] });
-    expect(stripOf(room(), mine, NOW)).toEqual({ kind: "dance", text: "广场舞 · COMBO 7", lit: true, acts: [{ act: "danceTap", label: "跳", on: true }] });
+  });
+
+  it("shows one's own dance before all else: its song coming, its combo and 跳, its best once over", () => {
+    const song = { song: "s1", name: "Song", seconds: 100, dance: "", songAt: NOW - 1_000, now: NOW };
+    const d: SoloDanceNow = { key: 1, song, beats: null, combo: 7, best: 9, last: NOW - 500, tapAt: NOW - 500, judge: null, wildAt: null, err: null };
+    expect(soloStrip(d, NOW)).toEqual({ kind: "dance", text: "广场舞 · COMBO 7", lit: true, acts: [{ act: "danceTap", label: "跳", on: true }] });
+    expect(soloStrip({ ...d, song: { ...song, songAt: NOW + 2_100 } }, NOW)).toMatchObject({ text: "广场舞 · 3 秒后开始", lit: false, acts: [{ act: "danceTap", on: false }] });
+    expect(soloStrip(d, NOW + 20_000)).toEqual({ kind: "dance", text: "广场舞 · 最高连击 9", lit: false, acts: [] });
+    expect(soloStrip({ ...d, song: null }, NOW)).toMatchObject({ text: "广场舞 · 正在挑歌…", acts: [] });
   });
 });
 

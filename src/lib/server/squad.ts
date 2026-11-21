@@ -10,7 +10,7 @@ import { beijingDate } from "../beijing";
 import { siteDay, siteDayStart } from "../siteDay";
 import { FIREWATCH, FIREWATCH_DAYS, STACKTOP, STACKTOP_DAYS } from "../badges";
 import { fireEnd, playOn } from "../squadFire";
-import { inRound, isLobbyData, isMatchKind, modeEnds, STACK_SEND_MS, towerNow, type GiftData, type MatchRound, type QuizData, type RaceData, type SquadMode } from "../squadMode";
+import { inRound, isLobbyData, isMatchKind, STACK_SEND_MS, towerNow, type GiftData, type MatchRound, type QuizData, type RaceData, type SquadMode } from "../squadMode";
 import {
   afkFor,
   BOT_EXTRAS_MAX,
@@ -276,13 +276,11 @@ type Moved = { h: number; move: SquadMove; to?: number };
 /** The lines said and moves done in a room in the last SAY_BATCH_MS, told to it at once */
 type Fished = { h: number; no: number; variant: number; cm: number | null };
 type Thrown = Extract<SquadTell, { t: "throw" }>["items"][number];
-type Danced = Extract<SquadTell, { t: "dance" }>["items"][number];
 type Said = {
   items: { h: number; p: number; to?: number }[];
   moves: Moved[];
   fish?: Fished[];
   throws?: Thrown[];
-  dance?: Danced[];
   timer: ReturnType<typeof setTimeout>;
 };
 const g = globalThis as unknown as {
@@ -331,15 +329,6 @@ export const tellSquadPlay = (roomId: string, what: Extract<SquadTell, { t: "roo
 /** For 扔东西 (src/lib/server/squadPlay.ts): told to the whole room with the next batch */
 export function throwInRoom(roomId: string, thrown: Thrown) {
   (batchOf(roomId).throws ??= []).push(thrown);
-}
-
-/** For 龙门广场舞 (src/lib/server/squadModes.ts): a tap, told to the whole room with the next batch (the latest of each one's) */
-export function danceInRoom(roomId: string, danced: Danced) {
-  const batch = batchOf(roomId);
-  const b: Danced[] = (batch.dance ??= []);
-  const i = b.findIndex((d) => d.h === danced.h);
-  if (i >= 0) b.splice(i, 1);
-  b.push(danced);
 }
 
 /** 企鹅物流急件赛's own batches: each racer's report, with the server's now it is known up to, told to the room RACE_BATCH_MS after the first */
@@ -595,7 +584,7 @@ async function weekWearers(ids: string[], now: number) {
  */
 async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof squadMembers.$inferSelect }[], now: number): Promise<SquadMode | null> {
   if (!room.mode || !room.modeAt || !room.modeUntil || !room.modeLast) return null;
-  const endsAt = modeEnds(room.mode, room.modeUntil.getTime(), room.modeLast.getTime());
+  const endsAt = room.modeUntil.getTime();
   if (endsAt <= now) return null;
   const by = room.modeBy ?? 0;
   const tapAt = (r: { m: typeof squadMembers.$inferSelect }) => r.m.modeTapAt?.getTime() ?? 0;
@@ -655,8 +644,7 @@ async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof 
       ...(data.end ? { end: data.end } : {}),
     };
   }
-  if (room.mode !== "dance" || !room.modeSong || !room.modeSongAt) return null;
-  return { kind: "dance", ...base, song: room.modeSong, name: (await songOf(room.modeSong))?.name ?? "", songAt: room.modeSongAt.getTime() };
+  return null;
 }
 
 /** The room you are in now, as you see it (null: none), and the server's clock */
@@ -1791,7 +1779,7 @@ export async function sayInRoom(user: Pick<UserRow, "id">, body: Record<string, 
   // 喊一声 and 来一起玩？ only while a match waits or plays (the room playing or not); the rest of 对 TA 说 while it waits
   if (isMatchCall(p)) {
     const [room] = await db.select().from(squadRooms).where(eq(squadRooms.id, mine.room.id));
-    const ends = room?.mode && room.modeUntil && room.modeLast ? modeEnds(room.mode, room.modeUntil.getTime(), room.modeLast.getTime()) : null;
+    const ends = room?.mode && room.modeUntil ? room.modeUntil.getTime() : null;
     if (!room || !isMatchKind(room.mode) || ends === null || ends <= now) throw refuse(409, T.server.squad.noMatch);
   } else if (to !== null && mine.room.state !== "wait") throw refuse(409, T.server.squad.toPlaying, ROOM_PLAYING);
   if (!allow(`squad:sayEvery:${user.id}`, 1, SAY_EVERY_MS)) return { sent: false, now };
@@ -1888,14 +1876,13 @@ function addSay(roomId: string, h: number, p: number, to?: number) {
 async function flushSay(roomId: string) {
   const b = says.get(roomId);
   says.delete(roomId);
-  if (!b || (!b.items.length && !b.moves.length && !b.fish?.length && !b.throws?.length && !b.dance?.length)) return;
+  if (!b || (!b.items.length && !b.moves.length && !b.fish?.length && !b.throws?.length)) return;
   try {
     const ids = (await hearersOf(roomId)).map((r) => r.userId);
     if (b.items.length) tellSquad(ids, { t: "say", room: roomId, items: b.items } satisfies SquadTell);
     if (b.moves.length) tellSquad(ids, { t: "move", room: roomId, items: b.moves } satisfies SquadTell);
     if (b.fish?.length) tellSquad(ids, { t: "fish", room: roomId, items: b.fish } satisfies SquadTell);
     if (b.throws?.length) tellSquad(ids, { t: "throw", room: roomId, items: b.throws } satisfies SquadTell);
-    if (b.dance?.length) tellSquad(ids, { t: "dance", room: roomId, items: b.dance } satisfies SquadTell);
   } catch (e) {
     console.error("squad: telling a room its lines failed", e);
   }

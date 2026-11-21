@@ -94,7 +94,7 @@ const room = (more: Partial<SquadRoom> = {}): SquadRoom => ({
 });
 const nothing = () => {};
 const grid = (r: SquadRoom) =>
-  renderToStaticMarkup(createElement(PlayGrid, { room: r, now: NOW, fish: "rest", busy: false, msg: null, onFish: nothing, onFire: nothing, onStack: nothing, onMode: nothing }));
+  renderToStaticMarkup(createElement(PlayGrid, { room: r, now: NOW, fish: "rest", busy: false, msg: null, onFish: nothing, onFire: nothing, onStack: nothing, onDance: nothing, onMode: nothing }));
 
 describe("a match waiting, in 「玩」", () => {
   it("says how many are ready on its tile, readies one not ready, opens the card to one ready or its initiator; the others wait", () => {
@@ -102,7 +102,7 @@ describe("a match waiting, in 「玩」", () => {
     const ready = room({ mode: lobby({ in: [{ h: 2, combo: 0 }, { h: 1, combo: 0 }] }) });
     expect(modeRow(ready, "race", NOW)).toEqual({ kind: "race", label: "等人 2/4", does: "look", tag: "等人 2/4" });
     expect(modeRow(room({ mode: lobby({ by: 1, in: [{ h: 1, combo: 0 }] }) }), "race", NOW).does).toBe("look");
-    expect(modeRow(room({ mode: lobby() }), "dance", NOW)).toEqual({ kind: "dance", label: "等企鹅物流急件赛这局完（一次只能玩一个）", does: null });
+    expect(modeRow(room({ mode: lobby() }), "quiz", NOW)).toEqual({ kind: "quiz", label: "等企鹅物流急件赛这局完（一次只能玩一个）", does: null });
     const html = grid(room({ mode: lobby() }));
     expect(html).toContain('<em class="tag join">等人 1/4</em>');
     expect(html).toContain('class="tile k-gift off"');

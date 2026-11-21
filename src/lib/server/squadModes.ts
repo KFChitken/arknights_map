@@ -5,13 +5,7 @@ import { T } from "@/i18n";
 import { readDance, type DanceBeats } from "../dance";
 import { NOT_IN_ROOM } from "../squad";
 import {
-  beatOff,
-  DANCE_IDLE_MS,
   DANCE_LEAD_MS,
-  DANCE_TAP_EARLY_MS,
-  DANCE_TAP_EVERY_MS,
-  DANCE_TAP_LATE_MS,
-  DANCE_WINDOW_MS,
   GIFT_LEAD_MS,
   giftUntil,
   isLobbyData,
@@ -19,11 +13,11 @@ import {
   isModeKind,
   LOBBY_IDLE_MS,
   MODE_KINDS,
-  modeEnds,
   quizUntil,
   stackHeight,
   towerNow,
   type DanceSong,
+  type SoloDance,
   type GiftData,
   type LobbyData,
   type MatchRound,
@@ -38,8 +32,8 @@ import { musicLink } from "./musicLinks";
 import { squadMembers, squadRooms, users, type UserRow } from "./schema";
 import { grayUntil, listenSettings } from "./siteSettings";
 import { songList, songOf, type HeldSong } from "./songs";
-import { danceInRoom, raceInRoom, roomOf, stackInRoom, tellSquadPlay } from "./squad";
-import { forgetGift, giftRooms, makeGift, passIn, reseatGift, settleGift, watchGift } from "./squadGift";
+import { raceInRoom, roomOf, stackInRoom, tellSquadPlay } from "./squad";
+import { forgetGift, giftRooms, makeGift, modeBots, passIn, reseatGift, roomBotsOf, settleGift, watchGift } from "./squadGift";
 import { clearMode, handLobby, lobbyTell, type LobbyNews } from "./squadLobby";
 import { forgetRace, makeRace, raceDue, raceLatest, raceReport, relaneRace, settleRace, watchRace } from "./squadRace";
 import { endQuiz, makeQuiz } from "./squadQuiz";
@@ -47,11 +41,9 @@ import { countBlock, dropIn } from "./squadStack";
 
 /**
  * 玩点什么 in a room of 一起卫戍 (卫戍碎片时间玩法 ⑥; the rules in src/lib/squadMode.ts), kept on the room's row and its
- * members': the one mode playing, its opener, those in it. 开 (none playing), 加入 and 不跳了 tell the room. 龙门广场舞:
- * its song is 卫戍的一起听's while one plays (from where it is), else one of 听歌's at random with a table of beats,
- * DANCE_LEAD_MS on; each tap of 跳 is judged on the server's clock against the song's beats, the combo kept on the
- * member's row and told to the room with the next batch. A mode over (its song ended, or DANCE_IDLE_MS since the last
- * tap) is cleared by the next request to it, or by sweepModes (the main process, every few seconds), which tells the room.
+ * members': the one mode playing, its opener, those in it. 开 (none playing), 加入 and 不玩了 tell the room. A mode over
+ * is cleared by the next request to it, or by sweepModes (the main process, every few seconds), which tells the room.
+ * 龙门广场舞 is no mode: one asks for a song to dance to alone (soloDance), and nothing more of it comes here.
  *
  * A match (MATCH_KINDS) waits first (mode_data LobbyData): its initiator is mode_by, those ready are in (mode_in) as
  * they readied (mode_tap_at), and it lives on LOBBY_IDLE_MS from the last thing anyone did in it (mode_last,
@@ -83,8 +75,7 @@ async function lockedMine(tx: Tx, userId: string) {
 }
 
 /** When the room's mode ends by itself, or null while none plays */
-const endsOfMode = (room: Pick<RoomRow, "mode" | "modeUntil" | "modeLast">) =>
-  room.mode && room.modeUntil && room.modeLast ? modeEnds(room.mode, room.modeUntil.getTime(), room.modeLast.getTime()) : null;
+const endsOfMode = (room: Pick<RoomRow, "mode" | "modeUntil">) => (room.mode && room.modeUntil ? room.modeUntil.getTime() : null);
 
 /** A match's round as kept (null: no match, or one waiting) */
 const roundOf = (room: Pick<RoomRow, "mode" | "modeData">) =>
@@ -139,11 +130,15 @@ function beatsOf(song: Pick<HeldSong, "id" | "dance">): DanceBeats | null {
   return beats;
 }
 
-/** One of 听歌's songs with beats to dance to, at random (one of those at least `ms` long, where there are any), or undefined when there is none */
-async function anyDanceSong(rand: (n: number) => number, ms = 0): Promise<HeldSong | undefined> {
+/**
+ * One of 听歌's songs with beats to dance to, at random (one of those at least `ms` long, and not one of `not`, where
+ * there are any), or undefined when there is none
+ */
+async function anyDanceSong(rand: (n: number) => number, ms = 0, not: readonly string[] = []): Promise<HeldSong | undefined> {
   const songs = [...(await songList()).byId.values()].filter((s) => beatsOf(s));
   const long = songs.filter((s) => s.seconds * 1000 >= ms);
-  const from = long.length ? long : songs;
+  const fresh = (long.length ? long : songs).filter((s) => !not.includes(s.id));
+  const from = fresh.length ? fresh : long.length ? long : songs;
   return from.length ? from[rand(from.length)] : undefined;
 }
 
@@ -152,78 +147,36 @@ export function forgetDanceBeats() {
   beatsHeld.clear();
 }
 
-// ---- 开, 加入, 不跳了; a match's 准备, 开始 ----
+// ---- 开, 加入, 不玩了; a match's 准备, 开始 ----
 
 /**
  * The room's mode as one is opened: one playing, or a match's round over that has not gone back to waiting yet (the
- * sweep's to do), refused; one over by itself cleared
+ * sweep's to do), refused; one over by itself cleared, and one there is no more (龙门广场舞 as a room's) at once
  */
 async function makeRoom(tx: Tx, room: RoomRow, now: number) {
+  if (room.mode && !isModeKind(room.mode)) return endModeIn(tx, room, now);
   const ends = endsOfMode(room);
   if (ends !== null && (ends > now || roundOf(room))) throw refuse(409, T.server.squad.modeOn);
   if (ends !== null) await endModeIn(tx, room, ends);
 }
 
 /**
- * 开 a mode (玩点什么, kind): none playing in the room (one over is cleared first). A match waits for people (its
- * opener its initiator, ready); W 的礼物 only while there is a song to drum to. 龙门广场舞 dances to 卫戍的一起听's song
- * while one plays with LISTEN_LEFT_MS or more left of it (from where it is), else to one of 听歌's at random with beats,
- * from its start DANCE_LEAD_MS on. Its opener is in it; the room is told.
+ * 开 a mode (玩点什么, kind): none playing in the room (one over is cleared first). It waits for people (its opener its
+ * initiator, ready); W 的礼物 only while there is a song to drum to. The room is told.
  */
 export async function openMode(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now(), rand: (n: number) => number = randomInt) {
   if (!isModeKind(body.kind)) throw refuse(400, T.server.squad.badMode);
   const kind = body.kind;
   const mine = await roomOf(db, user.id);
   if (!mine) throw notInRoom();
-  if (isMatchKind(kind)) {
-    if (kind === "gift" && !(await anyDanceSong(rand))) throw refuse(409, T.server.squad.noGiftSong);
-    const done = await db.transaction(async (tx) => {
-      const { room, me } = await lockedMine(tx, user.id);
-      await makeRoom(tx, room, now);
-      const data: LobbyData = { wait: true, played: 0 };
-      await tx
-        .update(squadRooms)
-        .set({ mode: kind, modeBy: me.handle, modeAt: new Date(now), modeSong: null, modeSongAt: null, modeData: data, modeLast: new Date(now), modeUntil: new Date(now + LOBBY_IDLE_MS) })
-        .where(eq(squadRooms.id, room.id));
-      await tx
-        .update(squadMembers)
-        .set({ modeIn: false, modeCombo: 0, modeTapAt: null })
-        .where(and(eq(squadMembers.roomId, room.id), isNull(squadMembers.leftAt), ne(squadMembers.handle, me.handle)));
-      await tx
-        .update(squadMembers)
-        .set({ modeIn: true, modeCombo: 0, modeTapAt: new Date(now) })
-        .where(and(eq(squadMembers.roomId, room.id), eq(squadMembers.handle, me.handle), isNull(squadMembers.leftAt)));
-      return { roomId: room.id, h: me.handle };
-    });
-    await tellSquadPlay(done.roomId, { kind: "mode", h: done.h, on: true, lobby: "open", mode: kind });
-    return { now };
-  }
-  let fields: Pick<RoomRow, "modeSong" | "modeSongAt" | "modeUntil" | "modeLast" | "modeData">;
-  {
-    const together = await listenSongIn(mine.room.id, now);
-    let song: HeldSong | undefined;
-    let songAt: number;
-    let until: number;
-    const listenSong = together ? await songOf(together.song) : undefined;
-    if (together && listenSong && beatsOf(listenSong)) {
-      if (together.end - now < LISTEN_LEFT_MS) throw refuse(409, T.server.squad.danceSongEnding);
-      song = listenSong;
-      songAt = together.start;
-      until = together.end;
-    } else {
-      song = await anyDanceSong(rand);
-      if (!song) throw refuse(409, T.server.squad.noDanceSong);
-      songAt = now + DANCE_LEAD_MS;
-      until = songAt + song.seconds * 1000;
-    }
-    fields = { modeSong: song.id, modeSongAt: new Date(songAt), modeUntil: new Date(until), modeLast: new Date(now), modeData: null };
-  }
+  if (kind === "gift" && !(await anyDanceSong(rand))) throw refuse(409, T.server.squad.noGiftSong);
   const done = await db.transaction(async (tx) => {
     const { room, me } = await lockedMine(tx, user.id);
     await makeRoom(tx, room, now);
+    const data: LobbyData = { wait: true, played: 0 };
     await tx
       .update(squadRooms)
-      .set({ mode: kind, modeBy: me.handle, modeAt: new Date(now), ...fields })
+      .set({ mode: kind, modeBy: me.handle, modeAt: new Date(now), modeSong: null, modeSongAt: null, modeData: data, modeLast: new Date(now), modeUntil: new Date(now + LOBBY_IDLE_MS) })
       .where(eq(squadRooms.id, room.id));
     await tx
       .update(squadMembers)
@@ -231,11 +184,11 @@ export async function openMode(user: Pick<UserRow, "id">, body: Record<string, u
       .where(and(eq(squadMembers.roomId, room.id), isNull(squadMembers.leftAt), ne(squadMembers.handle, me.handle)));
     await tx
       .update(squadMembers)
-      .set({ modeIn: true, modeCombo: 0, modeTapAt: null })
+      .set({ modeIn: true, modeCombo: 0, modeTapAt: new Date(now) })
       .where(and(eq(squadMembers.roomId, room.id), eq(squadMembers.handle, me.handle), isNull(squadMembers.leftAt)));
     return { roomId: room.id, h: me.handle };
   });
-  await tellSquadPlay(done.roomId, { kind: "mode", h: done.h, on: true });
+  await tellSquadPlay(done.roomId, { kind: "mode", h: done.h, on: true, lobby: "open", mode: kind });
   return { now };
 }
 
@@ -251,10 +204,10 @@ async function listenSongIn(roomId: string, now: number) {
 }
 
 /**
- * 加入 (in) or out (不跳了，去围观; a match's 不玩了), the combo from 0; the room told. A match waiting: 准备 or not;
- * playing: in asks for the next round (下一局算我), out goes to watch this one (W 的礼物's seat a 人机's from the next
- * round, 急件赛's lane a 人机's before its start). Its initiator going out hands it on, or a match waiting goes with
- * nobody ready. 龙门广场舞 and 基建加盖 as they always were.
+ * A match's 准备 (in) or 不玩了 (out), the combo from 0; the room told. Waiting: 准备 or not; playing: in asks for the
+ * next round (下一局算我), out goes to watch this one (W 的礼物's seat a 人机's from the next round, 急件赛's lane a
+ * 人机's before its start). Its initiator going out hands it on, or a match waiting goes with nobody ready. A mode of
+ * before (龙门广场舞 as a room's), none.
  */
 export async function joinMode(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
   const into = body.in !== false;
@@ -264,10 +217,7 @@ export async function joinMode(user: Pick<UserRow, "id">, body: Record<string, u
     if (ends === null || ends <= now) throw refuse(409, T.server.squad.noMode);
     const mine = and(eq(squadMembers.roomId, room.id), eq(squadMembers.handle, me.handle), isNull(squadMembers.leftAt));
     const out = { roomId: room.id, h: me.handle, kind: room.mode, news: null as LobbyNews | null, changed: me.modeIn !== into, waiting: false };
-    if (!isMatchKind(room.mode)) {
-      await tx.update(squadMembers).set({ modeIn: into, modeCombo: 0, modeTapAt: null }).where(mine);
-      return { ...out, changed: true };
-    }
+    if (!isMatchKind(room.mode)) throw refuse(409, T.server.squad.noMode);
     const round = roundOf(room);
     out.waiting = !round;
     if (me.modeIn === into) return out;
@@ -365,58 +315,62 @@ export async function startMatch(user: Pick<UserRow, "id">, now = Date.now(), ra
   return { now };
 }
 
-// ---- 跳 ----
+// ---- the songs, for the page ----
 
-/**
- * 跳: a tap in 龙门广场舞 at `at` (the server's clock as the page has it: taken when within DANCE_TAP_EARLY_MS before
- * now and DANCE_TAP_LATE_MS after, else now), on the beat when within DANCE_WINDOW_MS of one of its song's: the combo
- * one up, else back to 0. Taps closer together than DANCE_TAP_EVERY_MS count once (the same answer, nothing changed).
- * The dance lives on DANCE_IDLE_MS from it; the room is told with the next batch.
- */
-export async function danceTap(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
-  const mine = await roomOf(db, user.id);
-  if (!mine) throw notInRoom();
-  const [room] = await db.select().from(squadRooms).where(eq(squadRooms.id, mine.room.id));
-  const ends = room ? endsOfMode(room) : null;
-  if (!room || room.mode !== "dance" || ends === null || ends <= now || !room.modeSong || !room.modeSongAt) throw refuse(409, T.server.squad.noMode);
-  if (!mine.me.modeIn) throw refuse(409, T.server.squad.notDancing);
-  const song = await songOf(room.modeSong);
-  const beats = song ? beatsOf(song) : null;
-  const asked = typeof body.at === "number" && Number.isFinite(body.at) ? body.at : now;
-  const at = asked >= now - DANCE_TAP_EARLY_MS && asked <= now + DANCE_TAP_LATE_MS ? asked : now;
-  const ok = Boolean(beats) && beatOff(beats!.beats, at - room.modeSongAt.getTime()) <= DANCE_WINDOW_MS;
-  const combo = ok ? mine.me.modeCombo + 1 : 0;
-  const where = and(eq(squadMembers.roomId, room.id), eq(squadMembers.handle, mine.me.handle), isNull(squadMembers.leftAt), eq(squadMembers.modeIn, true));
-  // only one tap a DANCE_TAP_EVERY_MS: one sooner changes nothing
-  const [kept] = await db
-    .update(squadMembers)
-    .set({ modeCombo: combo, modeTapAt: new Date(now) })
-    .where(and(where, or(isNull(squadMembers.modeTapAt), lte(squadMembers.modeTapAt, new Date(now - DANCE_TAP_EVERY_MS)))))
-    .returning({ combo: squadMembers.modeCombo });
-  if (!kept) return { now, combo: mine.me.modeCombo, ok: false, counted: false };
-  await db.update(squadRooms).set({ modeLast: new Date(now) }).where(and(eq(squadRooms.id, room.id), eq(squadRooms.mode, "dance")));
-  danceInRoom(room.id, { h: mine.me.handle, combo, ok, at: now });
-  return { now, combo, ok, counted: true };
+/** The link of a song (and its smaller copy's, 省流量) to one 听歌 is open to, while it is not paused and the site not gray */
+function songLinks(user: Pick<UserRow, "id" | "email">, song: Pick<HeldSong, "file" | "lite">, now: number) {
+  const hear = listenOpen(user) && !listenSettings().paused && !grayUntil(now);
+  return hear ? { url: musicLink(song.file, now), ...(song.lite ? { lite: musicLink(song.lite, now) } : {}) } : {};
 }
 
-// ---- the song, for the page ----
-
 /**
- * 龙门广场舞's song for a page in the room: its table of beats, and to one 听歌 is open to (LISTEN), while it is not
- * paused and the site not gray, its link and its smaller copy's (省流量), as 325 节拍's clips go out: not counted as
- * listening
+ * W 的礼物's song for a page in the room: its table of beats, and its links (songLinks), as 325 节拍's clips go out: not
+ * counted as listening
  */
 export async function danceSong(user: Pick<UserRow, "id" | "email">, now = Date.now()): Promise<DanceSong> {
   const mine = await roomOf(db, user.id);
   if (!mine) throw notInRoom();
   const [room] = await db.select({ mode: squadRooms.mode, song: squadRooms.modeSong }).from(squadRooms).where(eq(squadRooms.id, mine.room.id));
-  const song = (room?.mode === "dance" || room?.mode === "gift") && room.song ? await songOf(room.song) : undefined;
+  const song = room?.mode === "gift" && room.song ? await songOf(room.song) : undefined;
   if (!song || !song.dance) throw refuse(409, T.server.squad.noMode);
-  const hear = listenOpen(user) && !listenSettings().paused && !grayUntil(now);
+  return { song: song.id, dance: song.dance, ...songLinks(user, song, now), now };
+}
+
+/**
+ * 龙门广场舞 to dance alone (POST dance {not?}), whenever, beside whatever the room plays: 卫戍的一起听's song while one
+ * plays in the room with beats and LISTEN_LEFT_MS or more of it left (from where it is), else one of 听歌's at random
+ * with beats (not the ones in `not`, the last danced), DANCE_LEAD_MS on. Its links as W 的礼物's song's (songLinks); one
+ * alone in the room (nobody else, no 人机) gets two 人机 to dance beside them. Nothing of it is kept.
+ */
+export async function soloDance(user: Pick<UserRow, "id" | "email">, body: Record<string, unknown>, now = Date.now(), rand: (n: number) => number = randomInt): Promise<SoloDance> {
+  const mine = await roomOf(db, user.id);
+  if (!mine) throw notInRoom();
+  const together = await listenSongIn(mine.room.id, now);
+  const listenSong = together ? await songOf(together.song) : undefined;
+  let song: HeldSong | undefined;
+  let songAt: number;
+  if (together && listenSong && beatsOf(listenSong) && together.end - now >= LISTEN_LEFT_MS) {
+    song = listenSong;
+    songAt = together.start;
+  } else {
+    const not = Array.isArray(body.not) ? body.not.filter((x): x is string => typeof x === "string").slice(0, 5) : [];
+    song = await anyDanceSong(rand, 0, not);
+    if (!song) throw refuse(409, T.server.squad.noDanceSong);
+    songAt = now + DANCE_LEAD_MS;
+  }
+  const [others] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(squadMembers)
+    .where(and(eq(squadMembers.roomId, mine.room.id), isNull(squadMembers.leftAt), ne(squadMembers.userId, user.id)));
+  const alone = !others?.n && !(await roomBotsOf(db, mine.room.id)).length;
   return {
     song: song.id,
-    dance: song.dance,
-    ...(hear ? { url: musicLink(song.file, now), ...(song.lite ? { lite: musicLink(song.lite, now) } : {}) } : {}),
+    name: song.name,
+    seconds: song.seconds,
+    dance: song.dance!,
+    songAt,
+    ...songLinks(user, song, now),
+    ...(alone ? { bots: modeBots([], rand).slice(0, 2) } : {}),
     now,
   };
 }
@@ -424,10 +378,9 @@ export async function danceSong(user: Pick<UserRow, "id" | "email">, now = Date.
 // ---- the sweep ----
 
 /**
- * The main process, every few seconds: the modes over (their song ended, or DANCE_IDLE_MS since the last tap) cleared,
- * a match's round over waiting again, a match waiting LOBBY_IDLE_MS with nobody doing anything gone; their rooms told.
- * A mode of before there is no more (基建加盖 was one, opened before the tower was the room's own) is cleared too. Says
- * how many.
+ * The main process, every few seconds: the modes over cleared, a match's round over waiting again, a match waiting
+ * LOBBY_IDLE_MS with nobody doing anything gone; their rooms told. A mode of before there is no more (基建加盖 and
+ * 龙门广场舞 were ones, before the tower was the room's own and the dance each one's) is cleared too. Says how many.
  */
 export async function sweepModes(now = Date.now()) {
   let n = 0;
@@ -441,11 +394,7 @@ export async function sweepModes(now = Date.now()) {
       and(
         isNull(squadRooms.endedAt),
         isNotNull(squadRooms.mode),
-        or(
-          lte(squadRooms.modeUntil, new Date(now)),
-          and(eq(squadRooms.mode, "dance"), lte(squadRooms.modeLast, new Date(now - DANCE_IDLE_MS))),
-          notInArray(squadRooms.mode, [...MODE_KINDS]),
-        ),
+        or(lte(squadRooms.modeUntil, new Date(now)), notInArray(squadRooms.mode, [...MODE_KINDS])),
       ),
     );
   for (const r of over) {

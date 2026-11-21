@@ -35,7 +35,7 @@ import { squadOpen } from "@/lib/server/squadOpen";
 import { fireBoard } from "@/lib/server/fireBoard";
 import { stackBoard } from "@/lib/server/stackBoard";
 import { answerQuiz, askQuestion } from "@/lib/server/squadQuiz";
-import { danceSong, danceTap, joinMode, openMode, passGift, runRace, stackDrop, startMatch } from "@/lib/server/squadModes";
+import { danceSong, joinMode, openMode, passGift, runRace, soloDance, stackDrop, startMatch } from "@/lib/server/squadModes";
 import { addWood, hitBack, shakeOff, throwAt } from "@/lib/server/squadPlay";
 import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
 
@@ -73,11 +73,12 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST shake                    甩掉: what crawled onto your roach's head (源石虫) off it
  *   POST mode {kind}              玩点什么: open a mode (src/lib/server/squadModes.ts), none playing; a match (quiz, gift,
  *                                 race) waits for people, the opener its initiator
- *   POST modein {in}              加入 the mode playing (in), or 不跳了，去围观 (in false); a match waiting: 准备 or 不玩了;
- *                                 a round playing: 下一局算我 (in) or out to watch it
+ *   POST modein {in}              a match waiting: 准备 (in) or 不玩了 (in false); a round playing: 下一局算我 (in) or out
+ *                                 to watch it
  *   POST start                    开始: a match's initiator starts a round with those ready
- *   POST tap {at?}                跳: a tap in 龙门广场舞, at the server's clock as the page has it
- *   POST song                     龙门广场舞's song: its beats, and its link to one 听歌 is open to
+ *   POST song                     W 的礼物's song: its beats, and its link to one 听歌 is open to
+ *   POST dance {not?}             龙门广场舞, danced alone: a song for it (一起听's, else at random but not), its link, and
+ *                                 two 人机 to dance beside one alone in the room
  *   POST fireboard {week}         火焰周榜 (src/lib/server/fireBoard.ts): this week's or last week's, and your room on it
  *   POST question {n}             凯尔希随堂测 (src/lib/server/squadQuiz.ts): question n's three, and its picture or song
  *   POST answer {n, pick, at?}    凯尔希随堂测: an answer to question n, at the server's clock as the page has it
@@ -127,8 +128,8 @@ const OPS = {
   mode: { method: "POST", perMinute: 10 },
   modein: { method: "POST", perMinute: 20 },
   start: { method: "POST", perMinute: 10 },
-  tap: { method: "POST", perMinute: 400 },
   song: { method: "POST", perMinute: 20 },
+  dance: { method: "POST", perMinute: 10 },
   fireboard: { method: "POST", perMinute: 30 },
   question: { method: "POST", perMinute: 40 },
   answer: { method: "POST", perMinute: 40 },
@@ -141,9 +142,9 @@ const OPS = {
 } as const satisfies Record<string, { method: "GET" | "POST"; perMinute: number }>;
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
-/** What reaches others: not while 互动 is paused (暂停互动) */
 /** What says nothing of whether one is here (暂离, src/lib/server/squad.ts): reading, and the two that say it themselves */
 const NOT_HERE: ReadonlySet<Op> = new Set<Op>(["list", "room", "fireboard", "stackboard", "song", "question", "friends", "here", "away"]);
+/** What reaches others: not while 互动 is paused (暂停互动) */
 const TALKING: ReadonlySet<Op> = new Set<Op>([
   "open",
   "join",
@@ -163,7 +164,6 @@ const TALKING: ReadonlySet<Op> = new Set<Op>([
   "mode",
   "modein",
   "start",
-  "tap",
   "answer",
   "pass",
   "run",
@@ -257,10 +257,10 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
       return answer(await joinMode(user, body));
     case "start":
       return answer(await startMatch(user));
-    case "tap":
-      return answer(await danceTap(user, body));
     case "song":
       return answer(await danceSong(user));
+    case "dance":
+      return answer(await soloDance(user, body));
     case "question":
       return answer(await askQuestion(user, body));
     case "answer":

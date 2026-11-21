@@ -42,12 +42,15 @@ import {
   squadRaceSeen,
   squadRaceTap,
   squadServerNow,
+  soloEnds,
   squadStackDrop,
   useSquadLines,
   useSquadMoves,
   useSquadQuizPicks,
   useSquadRoom,
+  useSquadSolo,
   type QuizPicks,
+  type SoloDanceNow,
   type SquadLine,
   type SquadMoveDone,
 } from "./squading";
@@ -56,11 +59,11 @@ import "./squadMini.css";
 
 /**
  * The room of 一起卫戍 small (卫戍碎片时间玩法 ⑧, the canvases Pip and Mini): the room's line and its clock in a round;
- * a strip, lit when it is your turn: the mode playing or waiting, with what it needs (传, 跳 and 加油, 跳, the quiz's
- * three, 加入, 准备, 开始), else 基建加盖's tower with 放; the four roaches with what they said and what sits on their
- * heads; the last two lines said; 钓鳞's float,
- * 咕咚 and 收竿; and 说话, 扔东西 and 跟着听, each opening its page in place of the rest. The same in a window over the game
- * (SquadPip: 电脑小窗, from 弹出小窗) and as the whole page while the page is small (SquadMiniPage: 窗口很小时).
+ * a strip, lit when it is your turn: one's own 龙门广场舞 while one dances (跳), else the mode playing or waiting, with
+ * what it needs (传, 跳 and 加油, the quiz's three, 准备, 开始), else 基建加盖's tower with 放; the four roaches with what
+ * they said and what sits on their heads; the last two lines said; 钓鳞's float, 咕咚 and 收竿; and 说话, 扔东西 and
+ * 跟着听, each opening its page in place of the rest. The same in a window over the game (SquadPip: 电脑小窗, from
+ * 弹出小窗) and as the whole page while the page is small (SquadMiniPage: 窗口很小时).
  */
 
 /** The page's clock is looked at this often while it shows (the swing of 基建加盖 goes every frame) */
@@ -72,7 +75,7 @@ type Panel = "say" | "throw" | "listen";
 /** What a strip's button does: 加入 (a match waiting: 准备; a round playing: 下一局算我), a match's 开始, a game's own */
 export type StripAct = "join" | "start" | "danceTap" | "pass" | "jump" | "cheer" | "drop";
 /** The strip of the mode playing, or of the tower: which, how it stands, lit when it is your turn, its buttons (on: may be tapped now) */
-export type Strip = { kind: SquadModeKind | "stack"; text: string; lit: boolean; acts: { act: StripAct; label: string; on: boolean }[] };
+export type Strip = { kind: SquadModeKind | "stack" | "dance"; text: string; lit: boolean; acts: { act: StripAct; label: string; on: boolean }[] };
 
 const secs = (ms: number) => Math.max(1, Math.ceil(ms / 1000));
 
@@ -92,11 +95,6 @@ export function stripOf(room: SquadRoom, mode: SquadMode, now: number, picks: Qu
     const queued = "next" in mode && mode.next.includes(room.you);
     if (isMatchKind(kind)) return { kind, text: line(queued ? T.squad.mini.raceNext : fmt(t.people, { n: mode.in.length })), lit: false, acts: queued ? [] : [{ act: "join", label: T.squad.lobby.stripNext, on: true }] };
     return { kind, text: line(fmt(t.people, { n: mode.in.length })), lit: false, acts: [{ act: "join", label: T.squad.plays.join, on: true }] };
-  }
-  if (mode.kind === "dance") {
-    const going = now >= mode.songAt && now < mode.until;
-    const text = now < mode.songAt ? fmt(t.startsIn, { s: secs(mode.songAt - now) }) : fmt(t.danceCombo, { n: me.combo });
-    return { kind, text: line(text), lit: going, acts: [{ act: "danceTap", label: T.squad.dance.tap, on: going }] };
   }
   if (mode.kind === "quiz") {
     const ph = quizPhase(mode, now);
@@ -138,6 +136,17 @@ export function stripOf(room: SquadRoom, mode: SquadMode, now: number, picks: Qu
       ],
     };
   }
+}
+
+/** One's own 龙门广场舞's strip, while one dances: the song coming, the combo and 跳, or the dance over and its best */
+export function soloStrip(d: SoloDanceNow, now: number): Strip {
+  const t = T.squad.mini;
+  const line = (what: string) => fmt(t.line, { mode: t.short.dance, what });
+  if (!d.song) return { kind: "dance", text: line(d.err ?? T.squad.dance.loading), lit: false, acts: [] };
+  if (now >= soloEnds(d)) return { kind: "dance", text: line(fmt(t.danceBest, { n: d.best })), lit: false, acts: [] };
+  const going = now >= d.song.songAt;
+  const text = going ? fmt(t.danceCombo, { n: d.combo }) : fmt(t.startsIn, { s: secs(d.song.songAt - now) });
+  return { kind: "dance", text: line(text), lit: going, acts: [{ act: "danceTap", label: T.squad.dance.tap, on: going }] };
 }
 
 /** 基建加盖's strip, with no mode playing nor waiting: the tower's height and 放, or it fell (放 grey till its new plank) */
@@ -231,6 +240,7 @@ function QuizBit({ room, mode, now, ask, picks, busy, onPick }: { room: SquadRoo
 export function MiniView({
   room,
   now,
+  solo = null,
   fish,
   lines,
   moves,
@@ -254,6 +264,8 @@ export function MiniView({
 }: {
   room: SquadRoom;
   now: number;
+  /** One's own 龙门广场舞, while one dances: its strip before any other */
+  solo?: SoloDanceNow | null;
   /** 钓鳞's line: where it is in the water (null: none), and whether it has bitten */
   fish: { line: FishSpot | null; bite: boolean };
   lines: readonly SquadLine[];
@@ -282,7 +294,7 @@ export function MiniView({
   const head = headOf(room, now);
   const mode = room.mode && room.mode.endsAt > now ? room.mode : null;
   const tower = stackNow(room.stack, now);
-  const strip = mode ? stripOf(room, mode, now, picks) : stackStrip(room, now);
+  const strip = solo ? soloStrip(solo, now) : mode ? stripOf(room, mode, now, picks) : stackStrip(room, now);
   const order = room.members.map((m) => m.h);
   const lifts = liftsOf(lines, order, 22, now);
   const said = lastLines(room, lines);
@@ -411,6 +423,7 @@ function SquadMini({ room, where, onListen, onToast }: { room: SquadRoom; where:
   const lines = useSquadLines();
   const moves = useSquadMoves();
   const picks = useSquadQuizPicks();
+  const solo = useSquadSolo();
   const win = useFishWin();
   const [now, setNow] = useState(() => squadServerNow());
   const [panel, setPanel] = useState<Panel | null>(null);
@@ -428,9 +441,9 @@ function SquadMini({ room, where, onListen, onToast }: { room: SquadRoom; where:
   const ask = q ? asks[q.n] : undefined;
   // a 前奏 question plays its song here too (the quiz's own card may be shut)
   useIntro(q?.kind === "intro" && ask?.url ? ask.url : null, q?.at ?? 0, q ? q.ends - q.at : 0);
-  // 基建加盖's strip shows while no mode plays nor waits
+  // 基建加盖's strip shows while no mode plays nor waits, and one does not dance
   const tower = stackNow(room.stack, now);
-  const stacking = !mode && !tower.fell;
+  const stacking = !mode && !solo && !tower.fell;
   const swingAt = tower.swingAt;
   const height = tower.n;
   // the clock and the frames of the window it is drawn in: in the window over everything they go on while the page
@@ -471,7 +484,7 @@ function SquadMini({ room, where, onListen, onToast }: { room: SquadRoom; where:
   const onAct = (act: StripAct) => {
     setMsg(null);
     if (act === "join") return void run(() => squadModeIn(true));
-    if (act === "danceTap") return void squadDanceTap(null).catch(fail);
+    if (act === "danceTap") return squadDanceTap();
     if (act === "pass") return void squadGiftPass().catch(fail);
     if (act === "jump") return squadRaceJump();
     if (act === "cheer") return squadRaceTap();
@@ -486,6 +499,7 @@ function SquadMini({ room, where, onListen, onToast }: { room: SquadRoom; where:
     <MiniView
       room={room}
       now={now}
+      solo={solo}
       fish={{ line: win.line, bite: win.bite }}
       lines={lines}
       moves={moves}

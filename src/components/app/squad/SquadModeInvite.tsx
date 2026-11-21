@@ -12,11 +12,10 @@ import { dismissSquadMode, squadModeIn, useSquadModeCard, useSquadModeAsked, use
 import "./squadModes.css";
 
 /**
- * 「XX 开了龙门广场舞（2 人在跳），加入？」 (玩点什么, src/lib/squadMode.ts): a line at the top, over the map and the
- * room, to everyone in the room not in the mode playing, those who come in while it plays too. 加入 joins it (its card
- * opens), 不了 puts it away for that mode; not shown to its opener, nor while its card is open, nor to one
- * who was in it and went to watch. A match waiting asks those not ready (「XX 想玩…，来吗？」 准备); a round of it
- * playing, those neither in it nor in the next (「…下一局来吗？」 下一局算我).
+ * A match's line at the top (玩点什么, src/lib/squadMode.ts), over the map and the room, to everyone in the room not in
+ * it, those who come in while it waits or plays too: waiting, to those not ready (「XX 想玩…，来吗？」 准备); a round of
+ * it playing, to those neither in it nor in the next (「…下一局来吗？」 下一局算我). 不了 puts it away for that match; not
+ * shown to its initiator, nor while its card is open.
  */
 
 /**
@@ -70,13 +69,9 @@ export function InviteLine({
     ? who
       ? fmtNodes(t.waitInvites, { name: who, mode: name, n })
       : fmtNodes(t.waitInvitesNoBy, { mode: name, n })
-    : mode.kind === "dance"
-      ? who
-        ? fmtNodes(t.invites[mode.kind], { name: who, mode: name, n })
-        : fmtNodes(t.invitesNoBy[mode.kind], { mode: name, n })
-      : who
-        ? fmtNodes(t.nextInvites[mode.kind], { name: who, mode: name, n })
-        : fmtNodes(t.nextInvitesNoBy[mode.kind], { mode: name, n });
+    : who
+      ? fmtNodes(t.nextInvites[mode.kind], { name: who, mode: name, n })
+      : fmtNodes(t.nextInvitesNoBy[mode.kind], { mode: name, n });
   return (
     <div className="sq-minv" role="alert">
       {by && (
@@ -89,7 +84,7 @@ export function InviteLine({
         {note && <small>{note}</small>}
       </span>
       <button type="button" className="acc" disabled={busy} onClick={onJoin}>
-        {mode.wait ? t.inviteReady : mode.kind === "dance" ? t.inviteJoin : t.inviteNext}
+        {mode.wait ? t.inviteReady : t.inviteNext}
       </button>
       <button type="button" className="no" onClick={onNo} aria-label={fmt(t.inviteNoLabel, { mode: t.names[mode.kind] })}>
         {t.inviteNo}

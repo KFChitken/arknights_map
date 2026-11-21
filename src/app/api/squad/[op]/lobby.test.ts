@@ -157,7 +157,7 @@ const handleOf = (room: SquadRoom, name: string) => room.members.find((m) => m.n
 const ready = (u: Pick<User, "id">, into = true) => post(u, "modein", { in: into });
 
 describe("a match waiting for people", () => {
-  it("waits as it is picked: its initiator ready, nobody else, no round; no other mode meanwhile, 龙门广场舞 neither", async () => {
+  it("waits as it is picked: its initiator ready, nobody else, no round; no other mode meanwhile", async () => {
     const { host, a, b, room } = await cast();
     const heard = told(b);
     expect((await post(a, "mode", { kind: "race" })).status).toBe(200);
@@ -165,7 +165,7 @@ describe("a match waiting for people", () => {
     const aH = handleOf(v, "a");
     expect(v.mode).toEqual({ kind: "race", wait: true, by: aH, at: clock, in: [{ h: aH, combo: 0 }], played: 0, endsAt: clock + LOBBY_IDLE_MS, until: clock + LOBBY_IDLE_MS });
     expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "mode", h: aH, on: true, lobby: "open", mode: "race" } });
-    for (const kind of ["dance", "quiz", "gift", "race"]) expect(await post(host, "mode", { kind })).toMatchObject({ status: 409, body: { error: "正在玩一个，玩完才能开下一个。" } });
+    for (const kind of ["quiz", "gift", "race"]) expect(await post(host, "mode", { kind })).toMatchObject({ status: 409, body: { error: "正在玩一个，玩完才能开下一个。" } });
     // nothing of a round to play
     expect(await post(a, "run", { tap: 1 })).toMatchObject({ status: 409, body: { error: "现在没有在玩的。" } });
   });

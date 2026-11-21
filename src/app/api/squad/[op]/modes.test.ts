@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SquadRoom } from "@/lib/squad";
-import { DANCE_IDLE_MS, DANCE_LEAD_MS, type DanceMode, type DanceSong } from "@/lib/squadMode";
+import { DANCE_LEAD_MS, type SoloDance } from "@/lib/squadMode";
 import { loadMods } from "@/lib/server/admins";
 import { db } from "@/lib/server/db";
 import { forgetListeningCount } from "@/lib/server/listen";
@@ -17,7 +17,7 @@ import { forgetDanceBeats, sweepModes } from "@/lib/server/squadModes";
 import { POST as LISTEN } from "../../listen/[op]/route";
 import { POST } from "./route";
 
-// 玩点什么 and 龙门广场舞 on the server (卫戍碎片时间玩法 ⑥)
+// 玩点什么 on the server (卫戍碎片时间玩法 ⑥), and 龙门广场舞's song for one to dance alone
 
 vi.mock("@/lib/server/env", async (original) => ({ ...(await original<typeof import("@/lib/server/env")>()), ADMIN_EMAILS: ["owner@example.com"] }));
 
@@ -141,128 +141,77 @@ afterEach(async () => {
 });
 
 describe("玩点什么", () => {
-  it("plays one mode at a time, opened by anyone in the room, its opener in it; the others told, joining or only watching", async () => {
+  it("opens only the matches; 龙门广场舞 is no mode, and one of before is cleared, never in the way", async () => {
     const { host, a, b, room } = await cast();
     const heard = told(b);
     expect((await post(a, "mode", { kind: "chess" })).status).toBe(400);
-    expect((await post(a, "mode", { kind: "dance" })).status).toBe(200);
-    expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "mode", h: 2, on: true } });
-    const mode = (await viewOf(b)).mode as DanceMode;
-    expect(mode).toMatchObject({ kind: "dance", by: 2, at: clock, in: [{ h: 2, combo: 0 }], songAt: clock + DANCE_LEAD_MS, until: clock + DANCE_LEAD_MS + 200_000 });
-    expect(["s1", "s2"]).toContain(mode.song);
-    expect(mode.name).toMatch(/^Song [12]$/);
-    expect(mode.endsAt).toBe(clock + DANCE_IDLE_MS);
-    // one at a time
-    expect((await post(host, "mode", { kind: "dance" })).status).toBe(409);
-    // b joins, and goes back to watching
-    expect((await post(b, "modein", { in: true })).status).toBe(200);
-    expect((await viewOf(host)).mode!.in.map((m) => m.h)).toEqual([2, 3]);
-    expect((await post(b, "modein", { in: false })).status).toBe(200);
-    expect((await viewOf(host)).mode!.in.map((m) => m.h)).toEqual([2]);
-    // the host starts the round, and ends it: the dance goes on through both, a's combo with it
-    expect((await post(b, "modein", { in: true })).status).toBe(200);
-    await db.update(squadMembers).set({ inGame: true, modeCombo: 4 }).where(eq(squadMembers.roomId, room.id));
-    await db.update(squadRooms).set({ stateAt: new Date(clock - 120_000) }).where(eq(squadRooms.id, room.id));
-    expect((await post(host, "state", { to: "go" })).status).toBe(200);
-    const going = await viewOf(host);
-    expect(going.state).toBe("go");
-    expect(going.mode).toMatchObject({ kind: "dance", by: 2, in: [{ h: 2, combo: 4 }, { h: 3, combo: 4 }] });
-    await db.update(squadRooms).set({ stateAt: new Date(clock - 120_000) }).where(eq(squadRooms.id, room.id));
-    expect((await post(host, "state", { to: "wait" })).status).toBe(200);
-    expect((await viewOf(host)).mode).toMatchObject({ kind: "dance", in: [{ h: 2, combo: 4 }, { h: 3, combo: 4 }] });
-  });
-
-  it("judges 跳 on the server's clock against the song's beats: on one the combo up, off back to 0, taps too close once; the room told", async () => {
-    const { a, b, room } = await cast();
-    expect((await post(a, "mode", { kind: "dance" })).status).toBe(200);
-    const songAt = ((await viewOf(a)).mode as DanceMode).songAt;
-    const heard = told(b);
-    // the beats are half a second apart from half a second in
-    at(songAt + 1000);
-    expect((await post(a, "tap")).body).toMatchObject({ ok: true, combo: 1, counted: true });
-    at(songAt + 1530);
-    expect((await post(a, "tap")).body).toMatchObject({ ok: true, combo: 2 });
-    // too soon after: the same, nothing changed
-    at(songAt + 1600);
-    expect((await post(a, "tap")).body).toMatchObject({ combo: 2, counted: false });
-    // off the beat (250 from one)
-    at(songAt + 2250);
-    expect((await post(a, "tap")).body).toMatchObject({ ok: false, combo: 0 });
-    // the page's own time, a little before the server's now: judged at it
-    at(songAt + 2620);
-    expect((await post(a, "tap", { at: songAt + 2500 })).body).toMatchObject({ ok: true, combo: 1 });
-    // one far from now: the server's now instead (2.8 s in: off)
-    at(songAt + 2800);
-    expect((await post(a, "tap", { at: songAt + 1000 })).body).toMatchObject({ ok: false, combo: 0 });
-    await flushSaysNow();
-    expect(heard).toContainEqual({ t: "dance", room: room.id, items: [{ h: 2, combo: 0, ok: false, at: songAt + 2800 }] });
-    // only those in it dance
-    expect((await post(b, "tap")).status).toBe(409);
-    // the combos as the room sees them
-    at(songAt + 3000);
-    await post(a, "tap");
-    expect((await viewOf(b)).mode!.in).toEqual([{ h: 2, combo: 1 }]);
-  });
-
-  it("ends with its song, or 15 s after the last tap: cleared and told; then anyone opens the next at once, its opener too", async () => {
-    const { host, a, b, room } = await cast();
-    expect((await post(a, "mode", { kind: "dance" })).status).toBe(200);
-    const opened = clock;
-    const heard = told(b);
-    // nobody tapped: over 15 s on
-    at(opened + DANCE_IDLE_MS - 1);
-    expect(await sweepModes(clock)).toBe(0);
-    expect((await viewOf(b)).mode).not.toBeNull();
-    at(opened + DANCE_IDLE_MS);
+    expect((await post(a, "mode", { kind: "dance" })).status).toBe(400);
+    // a dance of before, open in the room as the new code comes
+    const before = { mode: "dance", modeBy: 2, modeAt: new Date(clock), modeSong: "s1", modeSongAt: new Date(clock + 3_000), modeUntil: new Date(clock + 200_000), modeLast: new Date(clock), modeData: null };
+    await db.update(squadRooms).set(before).where(eq(squadRooms.id, room.id));
+    await db.update(squadMembers).set({ modeIn: true }).where(eq(squadMembers.roomId, room.id));
     expect((await viewOf(b)).mode).toBeNull();
+    expect((await post(b, "modein", { in: true })).status).toBe(409);
+    // a match opened over it at once
+    expect((await post(host, "mode", { kind: "quiz" })).status).toBe(200);
+    expect((await viewOf(b)).mode).toMatchObject({ kind: "quiz", wait: true, by: 1 });
+    // one left alone: cleared on the sweep, the room told
+    await db.update(squadRooms).set(before).where(eq(squadRooms.id, room.id));
     expect(await sweepModes(clock)).toBe(1);
     expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "mode", on: false } });
-    // its opener opens the next at once, no wait (dropped 11/20), and the room tells none
-    expect(await viewOf(a)).not.toHaveProperty("modeAgain");
-    expect((await post(a, "mode", { kind: "dance" })).status).toBe(200);
-    expect((await viewOf(b)).mode!.by).toBe(2);
-    at(clock + DANCE_IDLE_MS);
-    expect((await viewOf(b)).mode).toBeNull();
-    expect((await post(host, "mode", { kind: "dance" })).status).toBe(200);
-    // with its song: taps keep it, the song's end ends it (cleared by the next request to it too)
-    const { songAt, until } = (await viewOf(host)).mode as DanceMode;
-    for (let t = songAt + 500; t < until; t += 10_000) {
-      at(t);
-      await post(host, "tap");
-    }
-    at(until);
-    expect((await viewOf(host)).mode).toBeNull();
-    at(until + 1000);
-    expect((await post(b, "mode", { kind: "dance" })).status).toBe(200);
-    expect((await viewOf(b)).mode!.by).toBe(3);
-    expect(await viewOf(host)).not.toHaveProperty("modeAgain");
-    // and its opener the next at once
-    at(clock + DANCE_IDLE_MS);
-    expect((await post(b, "mode", { kind: "dance" })).status).toBe(200);
+    expect((await post(a, "mode", { kind: "race" })).status).toBe(200);
   });
+});
 
-  it("dances to 卫戍的一起听's song from where it is, and gives each the song: its beats to all, its link to one 听歌 is open to", async () => {
-    const { host, a, b } = await cast();
-    expect((await hear(host, "squad", { song: "s2" })).status).toBe(200);
-    // 一起听 playing s2 for 30 s now
-    const started = clock - 30_000;
-    await db.update(listenRooms).set({ startedAt: new Date(started) });
-    expect((await post(a, "mode", { kind: "dance" })).status).toBe(200);
-    expect((await viewOf(a)).mode).toMatchObject({ song: "s2", songAt: started, until: started + 200_000 });
-    const song = (await post(b, "song")).body as unknown as DanceSong;
-    expect(song).toMatchObject({ song: "s2", dance: BEATS });
-    expect(song.url).toMatch(/^\/music\//);
+describe("龙门广场舞, danced alone", () => {
+  it("gives a song with beats at random (not the last), from three seconds on, its link to one 听歌 is open to; the room has nothing of it", async () => {
+    const { a, b } = await cast();
+    const heard = told(b);
+    const got = (await post(a, "dance")).body as unknown as SoloDance;
+    expect(["s1", "s2"]).toContain(got.song);
+    expect(got).toMatchObject({ name: got.song === "s1" ? "Song 1" : "Song 2", seconds: 200, dance: BEATS, songAt: clock + DANCE_LEAD_MS, now: clock });
+    expect(got.url).toMatch(/^\/music\//);
+    expect(got).not.toHaveProperty("bots");
+    for (let i = 0; i < 6; i++) expect(((await post(a, "dance", { not: ["s1"] })).body as unknown as SoloDance).song).toBe("s2");
+    expect((await viewOf(b)).mode).toBeNull();
+    await flushSaysNow();
+    expect(heard).toEqual([]);
     vi.stubEnv("LISTEN", "off");
-    const quiet = (await post(b, "song")).body as unknown as DanceSong;
+    const quiet = (await post(a, "dance")).body as unknown as SoloDance;
     expect(quiet.dance).toBe(BEATS);
     expect(quiet.url).toBeUndefined();
+  });
+
+  it("dances to 卫戍的一起听's song from where it is while enough of it is left; one alone in the room gets two 人机 beside them", async () => {
+    vi.stubEnv("SQUAD", "on");
     vi.stubEnv("LISTEN", "on");
-    // a song nearly over is not danced to
-    await post(a, "modein", { in: false });
+    await seedSongs();
+    const host = await player("owner");
+    const room = (await post(host, "open", { key: KEY, server: "cn", level: 3 })).body!.room as SquadRoom;
+    const alone = (await post(host, "dance")).body as unknown as SoloDance;
+    expect(alone.bots?.map((x) => x.h)).toEqual([-100, -101]);
+    // a 人机 of the room's: not alone
+    expect((await post(host, "bot", { do: "add" })).status).toBe(200);
+    expect((await post(host, "dance")).body).not.toHaveProperty("bots");
+    // with a in the room, 卫戍的一起听 playing s2 for 30 s now
+    const a = await player("a");
+    expect((await post(a, "join", { room: room.id })).status).toBe(200);
+    expect((await hear(host, "squad", { song: "s2" })).status).toBe(200);
+    const started = clock - 30_000;
+    await db.update(listenRooms).set({ startedAt: new Date(started) });
+    expect((await post(host, "dance", { not: ["s2"] })).body).toMatchObject({ song: "s2", songAt: started });
+    // nearly over: one at random instead
     at(started + 200_000 - 10_000);
-    await sweepModes(clock);
-    at(clock + 1);
-    await db.update(squadRooms).set({ mode: null, modeBy: null, modeAt: null, modeSong: null, modeSongAt: null, modeUntil: null, modeLast: null });
-    expect((await post(host, "mode", { kind: "dance" })).body!.error).toBe("一起听的这首快放完了，下一首开始后再开吧。");
+    expect((await post(host, "dance", { not: ["s2"] })).body).toMatchObject({ song: "s1", songAt: clock + DANCE_LEAD_MS });
+  });
+
+  it("is refused out of a room, and with no song that has beats", async () => {
+    const { a } = await cast();
+    const out = await player("c");
+    expect((await post(out, "dance")).status).toBe(409);
+    await db.delete(songs).where(sql`${songs.id} in ('s1', 's2')`);
+    await loadSongs();
+    forgetDanceBeats();
+    expect(await post(a, "dance")).toMatchObject({ status: 409, body: { error: "现在没有能跳的歌。" } });
   });
 });

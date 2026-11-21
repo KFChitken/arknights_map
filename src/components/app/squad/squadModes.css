@@ -100,11 +100,18 @@
 .sq-dance .dancer .body { display: block; line-height: 0; transform-origin: 50% 90%; will-change: transform; }
 .sq-dance .dancer .nm { max-width: 72px; overflow: hidden; color: #ffe4f1; font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
 .sq-dance .dancer.you .nm { color: #fff; font-size: 11.5px; font-weight: 700; }
-.sq-dance .watch { position: absolute; display: flex; flex-direction: column; align-items: center; opacity: 0.75; }
-.sq-dance .watch small { color: #c9b8d6; font-size: 10px; white-space: nowrap; }
-.sq-dance .watch.w0 { right: 8px; bottom: 100px; }
-.sq-dance .watch.w1 { left: 8px; bottom: 100px; }
-.sq-dance .watch.w2 { right: 8px; bottom: 160px; }
+/* 群魔乱舞: the lights on each beat (--flash, 1 on it fading to 0), the floor a new colour each bar (--floor) */
+.sq-dance.wild .lt { animation: none; opacity: calc(0.2 + 0.8 * var(--flash, 0)); }
+.sq-dance.wild .floor { background: repeating-linear-gradient(90deg, rgba(255, 90, 190, 0.32) 0 30px, rgba(120, 200, 255, 0.22) 30px 60px); filter: hue-rotate(var(--floor, 0deg)) saturate(1.4); }
+.sq-dance .dancer.wild .nm { color: #ffd23f; }
+.sq-dance .wildw {
+  position: absolute; left: 0; right: 0; top: 56px; color: #ffd23f; font-size: 28px; font-weight: 900; letter-spacing: 0.08em; text-align: center;
+  text-shadow: 0 0 12px rgba(255, 90, 190, 0.9), 0 2px 6px rgba(0, 0, 0, 0.5); animation: sqm-pop 0.3s ease-out both; pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sq-dance.wild .lt { opacity: 0.6; }
+  .sq-dance .wildw { animation: none; }
+}
 .sq-dance .judge {
   position: absolute; left: 50%; top: 92px; width: 80px; margin-left: -40px; color: #c9b8d6; font-size: 20px; font-weight: 900; text-align: center;
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5); animation: sqm-pop 0.25s ease-out both;
@@ -123,7 +130,7 @@
   box-shadow: 0 4px 0 #c22c6f; touch-action: manipulation; user-select: none; -webkit-user-select: none;
 }
 .sq-dance .tap:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 2px 0 #c22c6f; }
-.sq-dance .tap.join { font-size: 18px; }
+.sq-dance .tap.again { font-size: 18px; }
 .sq-dance .tap:disabled { background: #e3e5e8; color: #9aa0aa; box-shadow: none; cursor: default; }
 .sq-dance .music {
   width: 110px; height: 64px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 0 4px; border: 1px solid #d6d9de;
@@ -131,11 +138,6 @@
 }
 .sq-dance .music small { color: #6b7280; font-size: 11px; font-weight: 500; }
 .sq-dance .music:disabled { color: #6b7280; cursor: default; }
-.sq-dance .leave {
-  width: 100%; height: 34px; margin-top: 8px; border: 0; border-radius: 10px; background: #f1f2f4; color: #1b1d22; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
-}
-.sq-dance .leave:disabled { opacity: 0.6; cursor: default; }
-.sq-dance .dmsg { margin: 8px 2px 0; color: #b42318; font-size: 12.5px; }
 .sq-dance .note { margin: 12px 2px 0; color: #6b7280; font-size: 11.5px; line-height: 1.6; }
 /* ---- 凯尔希随堂测 ---- */
 .sq-quiz {

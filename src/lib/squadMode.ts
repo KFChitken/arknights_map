@@ -1,8 +1,8 @@
 /**
  * 玩点什么 in a room of 一起卫戍 (卫戍碎片时间玩法 ⑥): one mode at a time, opened by anyone in the room, the others told
- * and free to join or only watch (fishing, throwing, the fire and talking all go on beside it); each ends on its own,
- * after which anyone may open the next at once. The fight goes on above it, and a round starting never stops it. The
- * server keeps it (src/lib/server/squadModes.ts) and judges everything; the page draws it.
+ * and free to join or only watch (fishing, throwing, the fire, the tower, 龙门广场舞 and talking all go on beside it);
+ * each ends on its own, after which anyone may open the next at once. The fight goes on above it, and a round starting
+ * never stops it. The server keeps it (src/lib/server/squadModes.ts) and judges everything; the page draws it.
  *
  * The matches (MATCH_KINDS: 凯尔希随堂测, W 的礼物, 企鹅物流急件赛) wait for people first (等人): the first to pick one
  * is its initiator (发起人), ready from the start; others ready themselves (准备) or not; only the initiator starts it
@@ -12,14 +12,17 @@
  * room) hands it to the one ready earliest; with nobody ready it goes, and it goes LOBBY_IDLE_MS after anyone last did
  * anything in it while it waits.
  *
- * 龙门广场舞 (dance): its opener leads, those who join dance in a row to one of 听歌's songs, to its table of beats
- * (src/lib/dance.ts): the song 卫戍的一起听 is playing, else one at random that has beats. A tap of 跳 on a beat (within
- * DANCE_WINDOW_MS of one) puts one's combo up, and the dance gets livelier (晃 → 跳 → 转圈); off the beat, back to 0.
- * The music is 听歌's (LISTEN), each muting their own; it ends with its song, or DANCE_IDLE_MS after the last tap.
+ * 龙门广场舞 is no mode of the room's: each dances alone, whenever (SoloDance), to one of 听歌's songs with a table of
+ * beats (src/lib/dance.ts): the song 卫戍的一起听 is playing, else one at random. The page judges each tap of 跳: on a
+ * beat (within DANCE_WINDOW_MS of one) the combo goes up, and the dance gets fancier every DANCE_STEP (DANCE_MOVES: 晃
+ * → 跳 → 转圈 → 左右横跳 → 甩头 → 后空翻 → 群魔乱舞); off the beat, back to 0. Those in the room dance beside one, as
+ * the page has them (each their own accuracy, DANCE_MATE_MIN..DANCE_MATE_MAX); one alone in the room, two 人机. The
+ * music is 听歌's (LISTEN), each muting their own; it ends with its song, or DANCE_IDLE_MS after the last tap. Nothing
+ * of it is sent while one dances, nor kept.
  */
 
-/** The modes there are, one at a time in a room (基建加盖 is the room's own tower, always there beside them) */
-export const MODE_KINDS = ["dance", "quiz", "gift", "race"] as const;
+/** The modes there are, one at a time in a room (基建加盖 is the room's own tower, 龙门广场舞 each one's own, beside them) */
+export const MODE_KINDS = ["quiz", "gift", "race"] as const;
 export type SquadModeKind = (typeof MODE_KINDS)[number];
 export const isModeKind = (v: unknown): v is SquadModeKind => typeof v === "string" && (MODE_KINDS as readonly string[]).includes(v);
 
@@ -42,26 +45,49 @@ export const isLobbyData = (v: unknown): v is LobbyData => typeof v === "object"
 /** One ready (modeIn) at `tapAt` plays the round begun at `begun` when they readied by then; else they wait for the next */
 export const inRound = (tapAt: number | null, begun: number) => tapAt === null || tapAt <= begun;
 
-/** 龙门广场舞: its song starts this long after it opens (time for the pages to fetch it), unless 一起听's is playing */
+/** 龙门广场舞: its song starts this long after it is asked for (time for the page to fetch it), unless 一起听's is playing */
 export const DANCE_LEAD_MS = 3_000;
-/** It ends this long after the last tap anyone made */
+/** It ends this long after the last tap (or its song's start, with none) */
 export const DANCE_IDLE_MS = 15_000;
 /** A tap within this of a beat (either side) is on it */
 export const DANCE_WINDOW_MS = 150;
-/**
- * A tap's own time, as the page sends it on the server's clock, is taken when it is no more than this before the
- * server's now (the way here) nor this after it; else the server's now is
- */
-export const DANCE_TAP_EARLY_MS = 400;
-export const DANCE_TAP_LATE_MS = 50;
 /** Taps closer together than this count as one */
 export const DANCE_TAP_EVERY_MS = 180;
-/** From this combo the roach jumps, and from this it spins */
-export const DANCE_HOP = 5;
-export const DANCE_SPIN = 10;
+/** The moves, one more every DANCE_STEP of combo: 晃, 跳, 转圈, 左右横跳, 甩头, 后空翻, and from DANCE_STEP * 6 on 群魔乱舞 */
+export const DANCE_MOVES = ["sway", "hop", "spin", "side", "bang", "flip", "wild"] as const;
+export const DANCE_STEP = 5;
+export type DanceMove = (typeof DANCE_MOVES)[number];
+export const danceMove = (combo: number): DanceMove => DANCE_MOVES[Math.min(DANCE_MOVES.length - 1, Math.floor(Math.max(0, combo) / DANCE_STEP))];
+/** Those dancing beside one (the page's own, never sent) hit a beat this often, each their own between these */
+export const DANCE_MATE_MIN = 0.8;
+export const DANCE_MATE_MAX = 0.97;
+/** Beside one, as many as this of the room */
+export const DANCE_MATES = 3;
 
-export type DanceMove = "sway" | "hop" | "spin";
-export const danceMove = (combo: number): DanceMove => (combo >= DANCE_SPIN ? "spin" : combo >= DANCE_HOP ? "hop" : "sway");
+/** A tap of 跳 judged (the page's): the combo after it, whether on a beat, and whether it counted at all (too soon after the last) */
+export type DanceJudged = { combo: number; ok: boolean; counted: boolean };
+/**
+ * 跳 at `at` (ms, the server's clock), its song's 0 at songAt: on a beat (within DANCE_WINDOW_MS of one) the combo one
+ * up, else back to 0; within DANCE_TAP_EVERY_MS of the last tap that counted (last), nothing changed
+ */
+export function danceJudge(beats: ArrayLike<number> | null, songAt: number, combo: number, last: number | null, at: number): DanceJudged {
+  if (last !== null && at - last < DANCE_TAP_EVERY_MS) return { combo, ok: false, counted: false };
+  const ok = Boolean(beats) && beatOff(beats!, at - songAt) <= DANCE_WINDOW_MS;
+  return { combo: ok ? combo + 1 : 0, ok, counted: true };
+}
+
+/**
+ * Whether one dancing beside one (seed: theirs for this dance) hits beat k, at their own accuracy
+ * (DANCE_MATE_MIN..DANCE_MATE_MAX, from the seed): the same on every try
+ */
+export const mateAim = (seed: number) => DANCE_MATE_MIN + (DANCE_MATE_MAX - DANCE_MATE_MIN) * raceRand(seed, 77, 0);
+export const mateHits = (seed: number, k: number) => raceRand(seed, 78, k) < mateAim(seed);
+/** Their combo after beat k (from the first, 0), hitting or missing each by the seed */
+export function mateCombo(seed: number, k: number): number {
+  let combo = 0;
+  for (let i = 0; i <= k; i++) combo = mateHits(seed, i) ? combo + 1 : 0;
+  return combo;
+}
 
 /** How far a time (ms from the song's start) is from the nearest of its beats (s from its start), in ms */
 export function beatOff(beats: ArrayLike<number>, tMs: number): number {
@@ -80,8 +106,6 @@ export function beatOff(beats: ArrayLike<number>, tMs: number): number {
 
 /** When a dance ends by itself: its song over, or DANCE_IDLE_MS after its last tap, whichever comes first */
 export const danceEnds = (until: number, last: number) => Math.min(until, last + DANCE_IDLE_MS);
-/** When a mode ends by itself: a dance as danceEnds, the others at their end (until) */
-export const modeEnds = (kind: string, until: number, last: number) => (kind === "dance" ? danceEnds(until, last) : until);
 
 /**
  * The mode a room is playing, as its pages have it (SquadRoom.mode): which, opened by whom (one's number) and when;
@@ -101,8 +125,6 @@ export type LobbyMode = ModeCore & { kind: MatchKind; wait: true; played: number
  * (in) and those who asked for the next (next, by number, as they asked)
  */
 type RoundBase = ModeBase & { begun: number; played: number; next: number[] };
-/** 龙门广场舞: its song (id and name), where its start is on the server's clock (songAt, the song's 0) */
-export type DanceMode = ModeBase & { kind: "dance"; song: string; name: string; songAt: number };
 /** 凯尔希随堂测: its questions, each as far as it has gone (QuizQuestion) */
 export type QuizMode = RoundBase & { kind: "quiz"; questions: QuizQuestion[] };
 /**
@@ -115,7 +137,7 @@ export type GiftMode = RoundBase & { kind: "gift"; song: string; name: string; s
  * the mode's own 人机; once it is over and the server settled it, the order they signed in (RaceEnd)
  */
 export type RaceMode = RoundBase & { kind: "race"; start: number; seed: number; lanes: RaceLane[]; obs: RaceObstacle[]; bots: GiftBot[]; end?: RaceEnd };
-export type SquadMode = DanceMode | QuizMode | GiftMode | RaceMode | LobbyMode;
+export type SquadMode = QuizMode | GiftMode | RaceMode | LobbyMode;
 
 // ---- 凯尔希随堂测 ----
 
@@ -212,10 +234,15 @@ export type QuizAsk = {
 export type QuizAnswered = { right: boolean; first: boolean; answer: number; now: number };
 
 /**
- * 龙门广场舞's song for a page (POST /api/squad/song): its table of beats always; its link (and its smaller copy's)
+ * W 的礼物's song for a page (POST /api/squad/song): its table of beats always; its link (and its smaller copy's)
  * only to one 听歌 is open to (LISTEN), while it is not paused and the site not gray
  */
 export type DanceSong = { song: string; dance: string; url?: string; lite?: string; now: number };
+/**
+ * 龙门广场舞 for one to dance alone (POST /api/squad/dance): its song as DanceSong's (its name and length too), where
+ * its 0 is on the server's clock (songAt), and two 人机 to dance beside one alone in the room (bots)
+ */
+export type SoloDance = DanceSong & { name: string; seconds: number; songAt: number; bots?: GiftBot[] };
 
 // ---- W 的礼物 ----
 

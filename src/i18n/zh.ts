@@ -732,9 +732,7 @@ export const zh = {
       badMode: "没有这个玩法。",
       modeOn: "正在玩一个，玩完才能开下一个。",
       noMode: "现在没有在玩的。",
-      notDancing: "先加入才能跳。",
       noDanceSong: "现在没有能跳的歌。",
-      danceSongEnding: "一起听的这首快放完了，下一首开始后再开吧。",
       noQuiz: "现在出不了题。",
       badQuestion: "没有这一题。",
       notYet: "这题还没开始。",
@@ -2921,18 +2919,11 @@ export const zh = {
       /** A match's tile while it waits ({n} ready of 4), and while a round plays to one not in it */
       waitTag: "等人 {n}/4",
       nextTag: "下一局",
-      names: { dance: "龙门广场舞", quiz: "凯尔希随堂测", gift: "W 的礼物", race: "企鹅物流急件赛", stack: "基建加盖" },
+      names: { quiz: "凯尔希随堂测", gift: "W 的礼物", race: "企鹅物流急件赛", stack: "基建加盖" },
       /** On a tile of the room, for one in it (stack: one who put a block on the tower within the last 30 seconds) */
-      tileTags: { dance: "在跳", quiz: "在答", gift: "在传", race: "在跑", stack: "在搭" },
+      tileTags: { quiz: "在答", gift: "在传", race: "在跑", stack: "在搭" },
       /** Said to those who were in it or looking at it, as it ends */
-      ended: { dance: "广场舞散场了", quiz: "凯尔希随堂测结束了", gift: "W 的礼物散场了", race: "企鹅物流急件赛跑完了" },
-      /** To one in the room not in it: a line at the top ({mode} its name, in bold) */
-      invites: {
-        dance: "{name} 开了{mode}（{n} 人在跳），加入？",
-      },
-      invitesNoBy: {
-        dance: "{mode}正在跳（{n} 人），加入？",
-      },
+      ended: { quiz: "凯尔希随堂测结束了", gift: "W 的礼物散场了", race: "企鹅物流急件赛跑完了" },
       /** A match waiting, to one not ready ({name} its initiator, {n} ready of 4); NoBy while TA is not in the room */
       waitInvites: "{name} 想玩{mode}（{n}/4 准备了），来吗？",
       waitInvitesNoBy: "{mode}在等人（{n}/4 准备了），来吗？",
@@ -2947,7 +2938,6 @@ export const zh = {
         gift: "{mode}正在传（{n} 人），下一局来吗？",
         race: "{mode}正在跑（{n} 人），下一局来吗？",
       },
-      inviteJoin: "加入",
       inviteReady: "准备",
       inviteNext: "下一局算我",
       inviteNo: "不了",
@@ -3009,7 +2999,7 @@ export const zh = {
       playing: "正在玩：{mode}（{n} 人）· 一次只能玩一个",
       waiting: "正在等人：{mode}（{n}/4 准备了）· 一次只能玩一个",
     },
-    /** 龙门广场舞 (src/components/app/squad/SquadDance.tsx), a mode of 玩点什么 */
+    /** 龙门广场舞 (src/components/app/squad/SquadDance.tsx), danced alone, beside whatever the room plays */
     dance: {
       title: "龙门广场舞",
       count: "龙门广场舞 · {n} 人",
@@ -3017,14 +3007,30 @@ export const zh = {
       startsIn: "♪ {name} · {s} 秒后开始",
       combo: "COMBO",
       lead: "领舞",
-      watch: "围观",
       ok: "准！",
       miss: "歪了",
-      moves: { sway: "连击 5 以下：原地晃", hop: "连击 5 以上：跳起来", spin: "连击 10 以上：转圈" },
+      moves: {
+        sway: "连击 5 以下：原地晃",
+        hop: "连击 5 以上：跳起来",
+        spin: "连击 10 以上：转圈",
+        side: "连击 15 以上：左右横跳",
+        bang: "连击 20 以上：甩头",
+        flip: "连击 25 以上：后空翻",
+        wild: "连击 30 以上：群魔乱舞",
+      },
+      /** Each move's short name, in the line as a dance ends */
+      moveNames: { sway: "晃", hop: "跳", spin: "转圈", side: "左右横跳", bang: "甩头", flip: "后空翻", wild: "群魔乱舞" },
+      /** Said over the stage as one comes into 群魔乱舞 */
+      wild: "群魔乱舞！",
       tap: "跳",
       tapLabel: "在拍子上点一下：跳",
-      watching: "你在围观，点「加入一起跳」就能跳",
-      join: "加入一起跳",
+      /** Its song asked for */
+      loading: "正在挑歌…",
+      /** Its end: the best combo, and the fanciest move it came to ({move} one of moveNames) */
+      result: "这首跳完了：最高连击 {n}，最花跳到「{move}」",
+      again: "再跳一首",
+      /** 「玩」's tile while a match's round one is in plays */
+      inMatch: "比赛中，跑完再跳",
       musicOn: "音乐：开",
       musicOff: "音乐：关",
       musicOnly: "只关你自己的",
@@ -3039,10 +3045,8 @@ export const zh = {
       /** 听歌 plays this very song (卫戍的一起听) */
       musicHere: "音乐：听歌在放",
       musicHereSub: "就是一起听这首",
-      leave: "不跳了，去围观",
-      note: "开的人领舞，加入的蟑螂排成一排。踩准了连击往上涨，动作越来越花（晃 → 跳 → 转圈）；踩不准就原地晃。歌用听歌里的方舟歌；房主开着一起听就跳那一首。关了音乐照样跳、照样踩拍子。一首歌放完，或者 15 秒没人点，就散场。",
+      note: "自己跳，房里的人由电脑带着在旁边一起跳。踩准了连击往上涨，动作越来越花（晃 → 跳 → 转圈 → 左右横跳 → 甩头 → 后空翻 → 群魔乱舞）；踩不准就回去晃。歌用听歌里的方舟歌；房里开着一起听就跳那一首。关了音乐照样跳。一首歌放完，或者 15 秒没点，就散场。",
       close: "关上广场舞",
-      ended: "广场舞散场了",
     },
     /** 企鹅物流急件赛 (src/components/app/squad/SquadRace.tsx), a mode of 玩点什么 */
     race: {
@@ -3105,6 +3109,8 @@ export const zh = {
       /** One not in the mode: how many are */
       people: "{n} 人在玩",
       danceCombo: "COMBO {n}",
+      /** One's own dance over: its best */
+      danceBest: "最高连击 {n}",
       quizNo: "第 {n} / {of} 题",
       giftYours: "在你手上！",
       raceRun: "第 {rank} · 还差 {m} m",
@@ -3159,7 +3165,7 @@ export const zh = {
        * One card folded into a strip on top of the other (only one open at a time): the mode you are in ({mode} its
        * name) as it plays, your lane in a race, a match waiting ({n} ready of 4); the tower; and the way back to it
        */
-      backModes: { dance: "{mode}在跳", quiz: "{mode}在答", gift: "{mode}在传", race: "{mode}在跑" },
+      backModes: { quiz: "{mode}在答", gift: "{mode}在传", race: "{mode}在跑" },
       backLane: " · 你在第 {k} 道",
       backWait: "{mode}在等人 {n}/4",
       backStack: "基建加盖 · {n} 层",

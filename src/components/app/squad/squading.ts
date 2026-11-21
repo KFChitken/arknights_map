@@ -27,10 +27,9 @@ import {
 import { squadApi, SquadUnreached } from "@/lib/squadClient";
 import { BALL_BACK_MS, throwOf, type SquadOn } from "@/lib/squadFire";
 import {
-  beatOff,
-  DANCE_TAP_EVERY_MS,
-  DANCE_WINDOW_MS,
   danceEnds,
+  danceJudge,
+  danceMove,
   isMatchKind,
   LOBBY_ASK_AGAIN_MS,
   RACE_CELL_MS,
@@ -46,9 +45,11 @@ import {
   stackShift,
   stackNow,
   stackSwing,
+  type SoloDance,
   type SquadModeKind,
 } from "@/lib/squadMode";
-import type { TouchResult } from "@/lib/world/types";
+import { readDance, type DanceBeats } from "@/lib/dance";
+import { WorldError, type TouchResult } from "@/lib/world/types";
 import { squadDing, squadPop } from "./squadSound";
 import { nameOf, weightAfterName } from "../fish/words";
 
@@ -160,8 +161,8 @@ export const useSquadRoundUnseen = () => useSyncExternalStore(roundUnseen.on, ro
 export const seeSquadRound = () => roundUnseen.set(false);
 
 /**
- * The card of the mode playing (SquadDance.tsx, SquadQuiz.tsx), over the map's foot: open for the mode as it was
- * opened (its start, at), as the player opened or joined it; another mode, or none, and it is shut
+ * The card of the mode playing (SquadQuiz.tsx, SquadGift.tsx, SquadRace.tsx), over the map's foot: open for the mode
+ * as it was opened (its start, at), as the player opened or joined it; another mode, or none, and it is shut
  */
 const modeCard = kept<number | null>(null);
 export const useSquadModeCard = () => useSyncExternalStore(modeCard.on, modeCard.get, () => null);
@@ -193,7 +194,7 @@ const picksOf = (at: number): QuizPicks => {
 };
 
 /**
- * 「XX 开了龙门广场舞，加入？」 (or a match's) answered 不了, or the mode opened, joined or left: by the mode's start
+ * A match's 「XX 想玩…，来吗？」 answered 不了, or the mode opened, joined or left: by the mode's start
  * (at), not asked again for it, and when (a match's 喊一声 asks again from LOBBY_ASK_AGAIN_MS after a 不了)
  */
 export type ModeAsked = { at: number; when: number };
@@ -211,10 +212,31 @@ function askAgain(r: SquadRoom) {
   modeAsked.set(null);
 }
 
-/** 跳's answers as they come (the player's own judge, 准！ or 歪了), by when */
-const danceJudge = kept<{ ok: boolean; at: number } | null>(null);
-export const useSquadDanceJudge = () => useSyncExternalStore(danceJudge.on, danceJudge.get, () => null);
-export const squadDanceJudgeNow = danceJudge.get;
+/**
+ * 龙门广场舞, danced alone on this page (squadMode.ts SoloDance): the song as the server gave it (asked for as its card
+ * opens, and for each 再跳一首), its beats, your combo as this page judges each 跳 (danceJudge), the best of it, the
+ * last tap that counted and the last at all, 准！ or 歪了 as you tap, and when 群魔乱舞 came. Nothing goes to the
+ * server while one dances. Its card (SquadDance.tsx) and the small window (SquadMini.tsx) both draw it; null: none.
+ */
+export type SoloDanceNow = {
+  /** When it was asked for (this page's clock): one dance from the next */
+  key: number;
+  song: SoloDance | null;
+  beats: DanceBeats | null;
+  combo: number;
+  best: number;
+  last: number | null;
+  tapAt: number | null;
+  judge: { ok: boolean; at: number } | null;
+  wildAt: number | null;
+  /** Why no song came */
+  err: string | null;
+};
+const solo = kept<SoloDanceNow | null>(null);
+export const useSquadSolo = () => useSyncExternalStore(solo.on, solo.get, () => null);
+export const squadSoloNow = solo.get;
+/** When one's dance ends by itself: its song over, or DANCE_IDLE_MS after the last tap (its song's start, with none) */
+export const soloEnds = (d: SoloDanceNow) => (d.song ? danceEnds(d.song.songAt + d.song.seconds * 1000, Math.max(d.tapAt ?? 0, d.song.songAt)) : Infinity);
 
 /**
  * 基建加盖's card (SquadStack.tsx): open or not. It and a mode's card are never open together. The tower's opened
@@ -236,6 +258,7 @@ export const squadStackBehindNow = behind.get;
 export function openSquadStack() {
   modeCard.set(null);
   behind.set(false);
+  solo.set(null);
   stackOpen.set(true);
 }
 /** Shut with ×: nothing behind it any more */
@@ -249,6 +272,8 @@ function showModeCard(at: number) {
     stackOpen.set(false);
     behind.set(true);
   }
+  // one's own dance stops: a match started with you in it, or its card opened
+  solo.set(null);
   modeCard.set(at);
 }
 
@@ -420,7 +445,7 @@ function setRoom(next: SquadRoom | null) {
     behind.set(false);
     stackMine.set(null);
     modeCard.set(null);
-    danceJudge.set(null);
+    solo.set(null);
     quizPicks.set(null);
     throws.set(NO_THROWS);
   }
@@ -629,20 +654,6 @@ export function heardSquad(raw: unknown) {
     return;
   }
   // 龙门广场舞: each one's combo as it is now, and the dance living on from their tap
-  if (tell.t === "dance") {
-    const mode = r.mode;
-    if (!mode) return;
-    let endsAt = mode.endsAt;
-    const dancers = mode.in.map((m) => {
-      const it = tell.items.findLast((x) => x.h === m.h);
-      if (it) endsAt = Math.max(endsAt, danceEnds(mode.until, it.at));
-      // your own as your taps' answers had it, newer than the batch's
-      return it && m.h !== r.you ? { ...m, combo: it.combo } : m;
-    });
-    room.set(withWant({ ...r, mode: { ...mode, in: dancers, endsAt } }));
-    return;
-  }
-  // 企鹅物流急件赛: what the others did, into their lanes (your own went in as you did it)
   // 基建加盖: the others' blocks onto the tower (yours went on as you put it), each told as the layer it is; a page out
   // of step (a layer it has as another's block, or one further on than its top) reads the room again
   if (tell.t === "stack") {
@@ -963,7 +974,6 @@ export async function squadOpenMode(kind: SquadModeKind) {
 export async function squadModeIn(into: boolean) {
   if (!into) await squadRaceFlush().catch(() => {});
   await timed(() => squadApi.modeIn(into));
-  danceJudge.set(null);
   const r = await loadSquadRoom();
   if (r?.mode) askedNow(r.mode.at);
   if (into && r?.mode) showModeCard(r.mode.at);
@@ -978,51 +988,49 @@ export async function squadStartMatch() {
   return r;
 }
 
-/** Your own combo in the dance (as your taps' answers have it), and the dance living on from a tap at `at` */
-function ownCombo(combo: number, at: number | null) {
-  const r = room.get();
-  const mode = r?.mode;
-  if (!r || !mode) return;
-  const endsAt = at === null ? mode.endsAt : Math.max(mode.endsAt, danceEnds(mode.until, at));
-  room.set(withWant({ ...r, mode: { ...mode, in: mode.in.map((m) => (m.h === r.you ? { ...m, combo } : m)), endsAt } }));
-}
-
-let tapAt = 0;
 /**
- * 跳, now, on the server's clock as this page has it. Judged here at once against the song's beats (s from its start,
- * when the page has them), as the server judges it, and put right by its answer where that differs; taps closer
- * together than DANCE_TAP_EVERY_MS are one (nothing sent). Null when nothing was sent.
+ * 龙门广场舞 from 「玩」 (or 再跳一首): its card open (a mode's or the tower's shut: one card at a time) and a song
+ * asked for (not the one just danced). Refused while a match's round you are in plays: run it first.
  */
-export async function squadDanceTap(beats: ArrayLike<number> | null) {
+export async function squadDanceOpen() {
   const r = room.get();
   const mode = r?.mode;
-  if (!r || mode?.kind !== "dance") return null;
-  const here = Date.now();
-  if (here - tapAt < DANCE_TAP_EVERY_MS) return null;
-  tapAt = here;
-  const at = squadServerNow();
-  const mine = mode.in.find((m) => m.h === r.you);
-  if (beats && mine) {
-    const ok = beatOff(beats, at - mode.songAt) <= DANCE_WINDOW_MS;
-    danceJudge.set({ ok, at: here });
-    ownCombo(ok ? mine.combo + 1 : 0, at);
+  if (r && mode && !mode.wait && isMatchKind(mode.kind) && mode.in.some((m) => m.h === r.you) && mode.endsAt > squadServerNow()) {
+    throw new WorldError(T.squad.dance.inMatch);
   }
-  let res: Awaited<ReturnType<typeof squadApi.tap>>;
+  const was = solo.get()?.song?.song;
+  const key = Date.now();
+  modeCard.set(null);
+  stackOpen.set(false);
+  behind.set(false);
+  solo.set({ key, song: null, beats: null, combo: 0, best: 0, last: null, tapAt: null, judge: null, wildAt: null, err: null });
   try {
-    res = await timed(() => squadApi.tap(at));
+    const got = await timed(() => squadApi.dance(was ? [was] : []));
+    const d = solo.get();
+    if (d?.key !== key) return;
+    const map = readDance(got.dance);
+    solo.set({ ...d, song: got, beats: map && !map.none ? map : null });
   } catch (e) {
-    // refused (the dance over, or you out of it): the room as it is
-    danceJudge.set(null);
-    void loadSquadRoom().catch(() => {});
-    throw e;
+    const d = solo.get();
+    if (d?.key === key) solo.set({ ...d, err: e instanceof WorldError ? e.message : T.map.common.tryAgain });
   }
-  if (!res.counted) danceJudge.set(null);
-  else if (danceJudge.get()?.ok !== res.ok) danceJudge.set({ ok: res.ok, at: here });
-  ownCombo(res.combo, res.counted ? res.now : null);
-  return res;
+}
+/** Its card shut: the dance over */
+export const closeSquadDance = () => solo.set(null);
+
+/** 跳 in one's own dance, now on the server's clock: judged here (danceJudge), the combo, its best, 准！ or 歪了 */
+export function squadDanceTap() {
+  const d = solo.get();
+  if (!d?.song) return;
+  const at = squadServerNow();
+  if (at >= soloEnds(d)) return;
+  const j = danceJudge(d.beats?.beats ?? null, d.song.songAt, d.combo, d.last, at);
+  if (!j.counted) return solo.set({ ...d, tapAt: at });
+  const wild = danceMove(j.combo) === "wild" && danceMove(d.combo) !== "wild";
+  solo.set({ ...d, combo: j.combo, best: Math.max(d.best, j.combo), last: at, tapAt: at, judge: { ok: j.ok, at: Date.now() }, wildAt: wild ? Date.now() : d.wildAt });
 }
 
-/** 龙门广场舞's song for this page: its beats, and its link where 听歌 is open to the player */
+/** W 的礼物's song for this page: its beats, and its link where 听歌 is open to the player */
 export const squadDanceSong = () => timed(() => squadApi.song());
 
 /**
@@ -1399,6 +1407,7 @@ export function forgetSquadPage() {
   raceCellTimer = raceReportTimer = raceTickTimer = 0;
   raceOwn = null;
   raceSeen = null;
+  solo.set(null);
   window.clearTimeout(roundTimer);
   talkOpen.set(false);
   setRoom(null);

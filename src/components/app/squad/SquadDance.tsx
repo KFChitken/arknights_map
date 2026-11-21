@@ -1,26 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { fmt, T } from "@/i18n";
-import { readDance, type DanceBeats } from "@/lib/dance";
-import type { SquadRoom } from "@/lib/squad";
-import { danceMove, type DanceMode, type DanceMove, type DanceSong, type SquadMode } from "@/lib/squadMode";
-import { WorldError } from "@/lib/world/types";
+import type { SquadMember, SquadRoom } from "@/lib/squad";
+import { DANCE_MATES, danceMove, mateCombo, type GiftBot } from "@/lib/squadMode";
 import { beatAt } from "../../disco/clock";
+import { danceTraits, planOf, wildMove, type Plan } from "../../disco/choreo";
 import { isListening, listenLiteNow, listenTap, useListenPlayer } from "../listening";
 import { SquadRoach } from "./SquadRoach";
-import { StackBehind } from "./SquadStack";
-import { closeSquadModeCard, squadDanceSong, squadDanceTap, squadModeIn, squadServerNow, useSquadDanceJudge, useSquadModeCard, useSquadRoom } from "./squading";
+import { closeSquadDance, soloEnds, squadDanceOpen, squadDanceTap, squadServerNow, useSquadRoom, useSquadSolo, type SoloDanceNow } from "./squading";
 import "./squadModes.css";
 
 /**
- * 龙门广场舞 (玩点什么, src/lib/squadMode.ts), its card at the map's foot, no veil over the rest: the fight and the
- * room go on above it. Its opener leads in the middle (领舞), those in it in a row round TA, each as their combo has
- * it (晃 → 跳 → 转圈, from DANCE_HOP and DANCE_SPIN), on the song's beats; the others watch at the sides (围观). Over
- * it the song and where it is, your COMBO, and 准！ or 歪了 as you tap; under it the beats coming to the line, 跳 (or
- * 加入一起跳 to one watching), the music (yours alone: kept on this device), 不跳了，去围观. The server judges the
- * taps (squadDanceTap); the music is 听歌's song (only to those 听歌 is open to), played while the card is open,
- * kept where the server's clock has the song, and silent while 听歌 itself plays (the same song or another).
+ * 龙门广场舞, danced alone (src/lib/squadMode.ts SoloDance), its card at the map's foot, no veil over the rest: the
+ * fight and the room go on above it. You lead in the middle; those of the room dance beside you (DANCE_MATES at most;
+ * one alone, the two 人机 the server gave), each by this page alone: their own accuracy by their seed, their combo as
+ * they hit or miss each beat (mateCombo), their move as their combo has it, and 群魔乱舞 in the song's climaxes (disco's
+ * plan) or once you are in it. Your 跳 is judged here (squading.ts squadDanceTap), the dance getting fancier every five
+ * in a row (晃 → 跳 → 转圈 → 左右横跳 → 甩头 → 后空翻 → 群魔乱舞: each of the six in turn by the dancer's seed, a new
+ * one every four bars, the stage's lights on the beat and its floor changing colour). Over it the song and where it is,
+ * your COMBO, and 准！ or 歪了 as you tap; under it the beats coming to the line, 跳, the music (yours alone: kept on
+ * this device). It ends with its song or DANCE_IDLE_MS with no tap: your best and fanciest, and 再跳一首. Nothing goes
+ * to the server while you dance. The music is 听歌's song (only to those 听歌 is open to), kept where the server's
+ * clock has it, silent while 听歌 itself plays another; while it plays this very song (卫戍的一起听), its own.
  */
 
 /** Beats are this far apart (px a second) on the strip, coming to its line at HIT_X */
@@ -62,15 +64,37 @@ const clock = (ms: number) => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 
+/** The six moves 群魔乱舞 picks from, in the order disco's wildMove numbers them */
+const SIX = ["sway", "hop", "spin", "side", "bang", "flip"] as const;
+type Drawn = (typeof SIX)[number];
+
 /** A dancer's pose at beat b (its whole part the beat, the rest how far on to the next): lands on each beat */
-function moveAt(mv: DanceMove, b: number) {
+function moveAt(mv: Drawn, b: number) {
   const k = Math.floor(b);
   const ph = b - k;
+  const odd = ((k % 2) + 2) % 2;
   if (mv === "hop") return `translateY(${(-12 * Math.sin(Math.PI * ph)).toFixed(1)}px)`;
   if (mv === "spin") {
     // a turn in two beats, up and down again
-    const q = ((((k % 2) + 2) % 2) + ph) / 2;
+    const q = (odd + ph) / 2;
     return `translateY(${(-16 * Math.sin(Math.PI * q)).toFixed(1)}px) rotate(${Math.round(360 * q)}deg)`;
+  }
+  if (mv === "side") {
+    // a step to one side each beat, back the next, a little hop on the way
+    const x = odd ? 12 - 24 * ph : -12 + 24 * ph;
+    return `translate(${x.toFixed(1)}px, ${(-9 * Math.sin(Math.PI * ph)).toFixed(1)}px)`;
+  }
+  if (mv === "bang") {
+    // a hard nod forward on the beat, squashed as it lands, up again by the next
+    const hit = (1 - ph) ** 3;
+    return `rotate(${(24 * hit).toFixed(1)}deg) scale(${(1 + 0.12 * hit).toFixed(3)}, ${(1 - 0.18 * hit).toFixed(3)})`;
+  }
+  if (mv === "flip") {
+    // two beats: down into a crouch and up, then over backwards
+    const q = (odd + ph) / 2;
+    if (q < 0.5) return `scale(1.06, ${(1 - 0.22 * Math.sin(2 * Math.PI * q)).toFixed(3)})`;
+    const f = 2 * q - 1;
+    return `translateY(${(-26 * Math.sin(Math.PI * f)).toFixed(1)}px) rotate(${Math.round(-360 * f)}deg)`;
   }
   return `rotate(${(6 * Math.cos(Math.PI * b)).toFixed(2)}deg)`;
 }
@@ -179,22 +203,6 @@ export function useDanceMusic(m: Music) {
 }
 
 /**
- * Who dances where: the one leading in the middle (none, while TA watches or is gone), the others round TA, the first
- * to the left, the next to the right, and so on, each with their combo; the rest of the room watching
- */
-export function danceRow(room: SquadRoom, mode: SquadMode) {
-  const byH = new Map(room.members.map((m) => [m.h, m]));
-  const dancers = mode.in.flatMap((x) => {
-    const m = byH.get(x.h);
-    return m ? [{ m, combo: x.combo, lead: x.h === mode.by }] : [];
-  });
-  const lead = dancers.find((d) => d.lead);
-  const rest = dancers.filter((d) => !d.lead);
-  const row = lead ? [...rest.filter((_, i) => i % 2 === 0).reverse(), lead, ...rest.filter((_, i) => i % 2 === 1)] : rest;
-  return { row, watchers: room.members.filter((m) => !mode.in.some((x) => x.h === m.h)) };
-}
-
-/**
  * The music's button: none (听歌 not open to the player), here (听歌 plays this very song), else (听歌 plays another),
  * blocked (the browser waits for a tap), or the player's own switch, on or off
  */
@@ -208,32 +216,87 @@ export function musicWords(m: DanceMusic): { line: string; sub: string; off: boo
   return { line: m === "on" ? t.musicOn : t.musicOff, sub: t.musicOnly, off: false };
 }
 
-/** The card as it shows, for the room and its dance as they are now (on the server's clock) */
+/** How many of the song's beats (s from its start) have come by song time t (s) */
+export function beatsBy(beats: ArrayLike<number>, t: number): number {
+  let lo = 0;
+  let hi = beats.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (beats[mid] <= t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** Whether the k-th beat (from 1) is in one of the song's climaxes (disco's plan: a phrase loud enough) */
+export function climaxAt(plan: Plan | null, k: number): boolean {
+  if (!plan || k <= plan.first) return false;
+  return Boolean(plan.phrases[Math.floor((k - 1 - plan.first) / plan.per)]?.climax);
+}
+
+/** One dancing's seed (h: their number in the room, or a 人机's) in the dance whose song starts at songAt */
+export const danceSeed = (h: number, songAt: number) => (Math.imul(h + 4099, 2654435761) ^ Math.floor(songAt / 1000)) >>> 0;
+
+/**
+ * What one dances at beat b (of the song): the move their combo has, or in 群魔乱舞 (theirs, or wild: the song's
+ * climax for a mate, yours for all) one of the six by their seed, a new one every four bars
+ */
+export function danceNow(combo: number, seed: number, b: number, wild: boolean): { mv: Drawn; wild: boolean } {
+  const own = danceMove(combo);
+  if (!wild && own !== "wild") return { mv: own, wild: false };
+  return { mv: SIX[wildMove(danceTraits(seed), Math.max(0, b))] ?? "sway", wild: true };
+}
+
+/** Those dancing beside you: the room's others (players and 人机) as they are, DANCE_MATES at most; alone, the two 人机 given */
+export function danceMates(room: SquadRoom, bots: readonly GiftBot[] | undefined): SquadMember[] {
+  const others = room.members.filter((m) => !m.you).slice(0, DANCE_MATES);
+  if (others.length) return others;
+  return (bots ?? []).map((b) => ({
+    h: b.h,
+    name: fmt(T.squad.bot.name, { n: b.no }),
+    host: false,
+    you: false,
+    friend: false,
+    inGame: true,
+    pose: 0,
+    avatar: b.avatar,
+    color: b.color,
+    core: 0,
+    strategy: null,
+    extras: [],
+    bot: true,
+  }));
+}
+
+/** The card as it shows, for your dance and the room as they are now (on the server's clock) */
 export function DanceView({
   room,
-  mode,
+  d,
   now,
+  mates,
+  plan,
   judge,
+  wild,
   music,
-  busy,
-  msg,
   stageRef,
   stripRef,
   onClose,
   onTap,
   onTapClick,
-  onJoin,
   onMusic,
-  onLeave,
+  onAgain,
 }: {
   room: SquadRoom;
-  mode: DanceMode;
+  d: SoloDanceNow;
   now: number;
-  /** 准！ or 歪了, while it shows (by: when it was tapped, to start its pop again) */
+  mates: SquadMember[];
+  /** The song's plan (disco's), for its climaxes */
+  plan: Plan | null;
+  /** 准！ or 歪了, while it shows (at: when it was tapped, to start its pop again) */
   judge: { ok: boolean; at: number } | null;
+  /** 群魔乱舞 come just now: by when, while its word shows */
+  wild: number | null;
   music: DanceMusic;
-  busy: boolean;
-  msg: string | null;
   stageRef?: RefObject<HTMLDivElement | null>;
   stripRef?: RefObject<HTMLDivElement | null>;
   onClose: () => void;
@@ -241,62 +304,75 @@ export function DanceView({
   onTap: () => void;
   /** 跳 clicked: by a key (detail 0), a tap of its own; else after the finger's, where the music may start */
   onTapClick: (byKey: boolean) => void;
-  onJoin: () => void;
   onMusic: () => void;
-  onLeave: () => void;
+  /** 再跳一首, once it is over */
+  onAgain: () => void;
 }) {
   const t = T.squad.dance;
-  const me = mode.in.find((m) => m.h === room.you);
-  const combo = me?.combo ?? 0;
-  const { row, watchers } = danceRow(room, mode);
-  const over = mode.endsAt <= now;
-  const startsIn = mode.songAt - now;
-  const songLine =
-    startsIn > 0
-      ? fmt(t.startsIn, { name: mode.name, s: Math.ceil(startsIn / 1000) })
-      : fmt(t.song, { name: mode.name, at: clock(Math.min(now, mode.until) - mode.songAt), len: clock(mode.until - mode.songAt) });
-  const moveText = over ? t.ended : me ? t.moves[danceMove(combo)] : t.watching;
+  const song = d.song;
+  const over = Boolean(song) && now >= soloEnds(d);
+  const songT = song ? (now - song.songAt) / 1000 : -1;
+  const going = Boolean(song) && songT >= 0 && !over;
+  const k = going && d.beats ? beatsBy(d.beats.beats, songT) : 0;
+  const b = going ? (d.beats ? beatAt(d.beats.beats, songT, d.beats.bpm) : songT / FREE_BEAT_S) : 0;
+  const songAt = song?.songAt ?? 0;
+  const yours = going ? d.combo : 0;
+  const allWild = going && danceMove(yours) === "wild";
+  const climax = going && climaxAt(plan, k);
+  const me = room.members.find((m) => m.you);
+  const lead = me ? [{ m: me, lead: true, ...danceNow(yours, danceSeed(me.h, songAt), b, false) }] : [];
+  const others = mates.map((m) => {
+    const seed = danceSeed(m.h, songAt);
+    return { m, lead: false, ...danceNow(going && k > 0 ? mateCombo(seed, k - 1) : 0, seed, b, allWild || climax) };
+  });
+  // the first to your left, the next to your right, and so on
+  const row = [...others.filter((_, i) => i % 2 === 0).reverse(), ...lead, ...others.filter((_, i) => i % 2 === 1)];
+  const startsIn = song ? song.songAt - now : 0;
+  const songLine = !song
+    ? (d.err ?? t.loading)
+    : startsIn > 0
+      ? fmt(t.startsIn, { name: song.name, s: Math.ceil(startsIn / 1000) })
+      : fmt(t.song, { name: song.name, at: clock(Math.min(now - song.songAt, song.seconds * 1000)), len: clock(song.seconds * 1000) });
+  const moveText = over ? fmt(t.result, { n: d.best, move: t.moveNames[danceMove(d.best)] }) : t.moves[danceMove(yours)];
   const mw = musicWords(music);
   return (
-    <div className="sq-dance" role="dialog" aria-label={t.title}>
+    <div className={`sq-dance${allWild ? " wild" : ""}`} role="dialog" aria-label={t.title}>
       <header>
-        <b>{fmt(t.count, { n: mode.in.length })}</b>
+        <b>{fmt(t.count, { n: row.length })}</b>
         <button type="button" className="x" onClick={onClose} aria-label={t.close}>
           ×
         </button>
       </header>
-      <StackBehind />
       <div className="stage" ref={stageRef}>
         <i className="lt l" aria-hidden="true" />
         <i className="lt r" aria-hidden="true" />
         <i className="floor" aria-hidden="true" />
         <span className="song">{songLine}</span>
-        {me && combo > 0 && (
+        {yours > 0 && (
           <span className="combo">
-            <b>{combo}</b>
+            <b>{yours}</b>
             <small>{t.combo}</small>
           </span>
         )}
         <div className="line">
-          {row.map(({ m, combo: c, lead }) => (
-            <span key={m.h} className={`dancer${lead ? " lead" : ""}${m.you ? " you" : ""}`}>
-              {lead && <em>{t.lead}</em>}
-              <span className="body" data-mv={danceMove(c)}>
-                <SquadRoach m={{ ...m, pose: 0 }} size={lead ? 70 : 58} />
+          {row.map((x) => (
+            <span key={x.m.h} className={`dancer${x.lead ? " lead" : ""}${x.m.you ? " you" : ""}${x.wild ? " wild" : ""}`}>
+              {x.lead && <em>{t.lead}</em>}
+              <span className="body" data-mv={x.mv}>
+                <SquadRoach m={{ ...x.m, pose: 0 }} size={x.lead ? 70 : 58} />
               </span>
-              <span className="nm">{m.you ? T.squad.room.you : m.name}</span>
+              <span className="nm">{x.m.you ? T.squad.room.you : x.m.name}</span>
             </span>
           ))}
         </div>
-        {watchers.slice(0, 3).map((m, i) => (
-          <span key={m.h} className={`watch w${i}`}>
-            <SquadRoach m={{ ...m, pose: 0 }} size={36} />
-            <small>{m.you ? `${T.squad.room.you}${T.squad.dot}${t.watch}` : t.watch}</small>
-          </span>
-        ))}
-        {judge && (
-          <span key={judge.at} className={`judge${judge.ok ? " ok" : ""}`} role="status">
+        {judge && !over && (
+          <span key={`j${judge.at}`} className={`judge${judge.ok ? " ok" : ""}`} role="status">
             {judge.ok ? t.ok : t.miss}
+          </span>
+        )}
+        {wild !== null && !over && (
+          <span key={`w${wild}`} className="wildw" role="status">
+            {t.wild}
           </span>
         )}
         <span className="mv">{moveText}</span>
@@ -308,11 +384,15 @@ export function DanceView({
         <b className="hit" />
       </div>
       <div className="acts">
-        {me ? (
+        {over ? (
+          <button type="button" className="tap again" onClick={onAgain}>
+            {t.again}
+          </button>
+        ) : (
           <button
             type="button"
             className="tap"
-            disabled={over}
+            disabled={!song}
             aria-label={t.tapLabel}
             onPointerDown={(e) => {
               if (e.button === 0) onTap();
@@ -321,50 +401,38 @@ export function DanceView({
           >
             {t.tap}
           </button>
-        ) : (
-          <button type="button" className="tap join" disabled={busy || over} onClick={onJoin}>
-            {t.join}
-          </button>
         )}
         <button type="button" className="music" disabled={mw.off} aria-pressed={music === "on"} onClick={onMusic}>
           {mw.line}
           <small>{mw.sub}</small>
         </button>
       </div>
-      {me && (
-        <button type="button" className="leave" disabled={busy} onClick={onLeave}>
-          {t.leave}
-        </button>
-      )}
-      {msg && (
-        <p className="dmsg" role="status">
-          {msg}
-        </p>
-      )}
       <p className="note">{t.note}</p>
     </div>
   );
 }
 
+/** 群魔乱舞's word over the stage shows this long */
+const WILD_MS = 1_400;
+
 export default function SquadDance() {
-  const openAt = useSquadModeCard();
+  const d = useSquadSolo();
   const room = useSquadRoom();
-  const judge = useSquadDanceJudge();
   useListenPlayer();
   const [now, setNow] = useState(() => squadServerNow());
-  const [song, setSong] = useState<{ key: string; got: DanceSong; beats: DanceBeats | null } | null>(null);
   const [wanted, setWanted] = useState(musicWanted);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
   const [judged, setJudged] = useState<number | null>(null);
+  const [wildAt, setWildAt] = useState<number | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
-  const mode = room?.mode?.kind === "dance" && room.mode.at === openAt ? room.mode : null;
-  const open = Boolean(mode);
-  const key = mode ? `${mode.at}:${mode.song}` : null;
-  const songAt = mode?.songAt ?? 0;
-  const len = mode ? (mode.until - mode.songAt) / 1000 : 0;
-  const beats = song?.key === key ? song.beats : null;
+  const open = Boolean(d && room);
+  const song = d?.song ?? null;
+  const beats = d?.beats ?? null;
+  const songAt = song?.songAt ?? 0;
+  const len = song?.seconds ?? 0;
+  const plan = useMemo(() => (beats ? planOf(beats) : null), [beats]);
+  const judge = d?.judge ?? null;
+  const wild = d?.wildAt ?? null;
 
   useEffect(() => {
     if (!open) return;
@@ -373,23 +441,6 @@ export default function SquadDance() {
     return () => window.clearInterval(t);
   }, [open]);
 
-  // the song's beats and link, once a dance
-  useEffect(() => {
-    if (!key) return;
-    let gone = false;
-    setMsg(null);
-    squadDanceSong()
-      .then((got) => {
-        if (gone) return;
-        const map = readDance(got.dance);
-        setSong({ key, got, beats: map && !map.none ? map : null });
-      })
-      .catch((e: unknown) => !gone && setMsg(e instanceof WorldError ? e.message : T.map.common.tryAgain));
-    return () => {
-      gone = true;
-    };
-  }, [key]);
-
   useEffect(() => {
     if (!judge) return;
     setJudged(judge.at);
@@ -397,7 +448,14 @@ export default function SquadDance() {
     return () => window.clearTimeout(t);
   }, [judge]);
 
-  // the dancers on the beat, and the beats coming along the strip, every frame
+  useEffect(() => {
+    if (wild === null) return;
+    setWildAt(wild);
+    const t = window.setTimeout(() => setWildAt(null), WILD_MS);
+    return () => window.clearTimeout(t);
+  }, [wild]);
+
+  // the dancers on the beat, 群魔乱舞's lights and floor, and the beats coming along the strip, every frame
   useEffect(() => {
     if (!open) return;
     const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -408,12 +466,16 @@ export default function SquadDance() {
       const stage = stageRef.current;
       if (stage && !still) {
         const b = t < 0 ? Number.NaN : beats ? beatAt(beats.beats, t, beats.bpm) : t / FREE_BEAT_S;
-        stage.querySelectorAll<HTMLElement>("[data-mv]").forEach((d) => {
-          const mv = d.dataset.mv as DanceMove;
-          d.style.transform = Number.isNaN(b) ? "" : moveAt(mv, b);
-          // a sway rocks on the feet, a spin turns about the middle
-          d.style.transformOrigin = mv === "spin" ? "50% 55%" : "";
+        stage.querySelectorAll<HTMLElement>("[data-mv]").forEach((el) => {
+          const mv = el.dataset.mv as Drawn;
+          el.style.transform = Number.isNaN(b) ? "" : moveAt(mv, b);
+          // a sway rocks on the feet, a spin and a flip turn about the middle
+          el.style.transformOrigin = mv === "spin" || mv === "flip" ? "50% 55%" : "";
         });
+        if (!Number.isNaN(b)) {
+          stage.style.setProperty("--flash", (1 - (b - Math.floor(b))).toFixed(2));
+          stage.style.setProperty("--floor", `${(Math.floor(b / 4) * 53) % 360}deg`);
+        }
       }
       if (stripRef.current && beats) drawStrip(stripRef.current, beats.beats, t);
     };
@@ -421,56 +483,35 @@ export default function SquadDance() {
     return () => window.cancelAnimationFrame(raf);
   }, [open, songAt, beats]);
 
-  const got = song?.key === key ? song.got : null;
-  const lite = Boolean(got?.lite && listenLiteNow());
-  const src = got?.url ? (lite ? (got.lite ?? null) : got.url) : null;
+  const lite = Boolean(song?.lite && listenLiteNow());
+  const src = song?.url ? (lite ? (song.lite ?? null) : song.url) : null;
   const liteS = lite ? (beats?.liteS ?? 0) : 0;
   const listening = isListening();
-  const here = listening && Boolean(mode) && listenTap()?.song === mode?.song;
-  const over = !mode || mode.endsAt <= now;
+  const here = listening && Boolean(song) && listenTap()?.song === song?.song;
+  const over = !d || !song || now >= soloEnds(d);
   const can = open && !listening && !over && Boolean(src);
   const music = useDanceMusic({ can, want: can && wanted, src, songAt, liteS, len });
 
-  if (!mode || !room) return null;
-  const me = mode.in.some((m) => m.h === room.you);
-  const run = async (p: () => Promise<unknown>) => {
-    setBusy(true);
-    setMsg(null);
-    try {
-      await p();
-    } catch (e) {
-      setMsg(e instanceof WorldError ? e.message : T.map.common.tryAgain);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const tap = () => {
-    if (over || !me) return;
-    squadDanceTap(beats?.beats ?? null).catch((e: unknown) => setMsg(e instanceof WorldError ? e.message : T.map.common.tryAgain));
-  };
-  const state: DanceMusic =
-    got && !got.url ? "none" : here ? "here" : listening ? "else" : music.blocked ? "blocked" : wanted ? "on" : "off";
+  if (!d || !room) return null;
+  const state: DanceMusic = song && !song.url ? "none" : here ? "here" : listening ? "else" : music.blocked ? "blocked" : wanted ? "on" : "off";
   return (
     <DanceView
       room={room}
-      mode={mode}
+      d={d}
       now={now}
+      mates={danceMates(room, song?.bots)}
+      plan={plan}
       judge={judge && judged === judge.at ? judge : null}
+      wild={wild !== null && wildAt === wild ? wild : null}
       music={state}
-      busy={busy}
-      msg={msg}
       stageRef={stageRef}
       stripRef={stripRef}
-      onClose={closeSquadModeCard}
-      onTap={tap}
+      onClose={closeSquadDance}
+      onTap={squadDanceTap}
       onTapClick={(byKey) => {
         // a key (Enter, space) taps here; a finger or the mouse did on its way down, and the music may start here
-        if (byKey) tap();
+        if (byKey) squadDanceTap();
         if (music.blocked) music.start();
-      }}
-      onJoin={() => {
-        music.start();
-        void run(() => squadModeIn(true));
       }}
       onMusic={() => {
         if (music.blocked) return music.start();
@@ -479,7 +520,7 @@ export default function SquadDance() {
         keepMusicWanted(on);
         if (on) music.start(true);
       }}
-      onLeave={() => void run(() => squadModeIn(false))}
+      onAgain={() => void squadDanceOpen().catch(() => {})}
     />
   );
 }
