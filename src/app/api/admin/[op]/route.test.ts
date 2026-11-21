@@ -749,14 +749,14 @@ describe("禁放区 and 全站变灰, the owner's", () => {
     }
   });
 
-  it("fills 关注 B 站领券 and counts who claimed it, the code never in the 操作记录", async () => {
+  it("fills 关注 B 站领券 and counts who claimed it, each change in the 操作记录", async () => {
     const boss = await owner();
     // site_settings went with users: as every process would read it now
     await loadSettings();
     vi.stubEnv("PASSES", "admins");
     try {
       expect((await call("passFollow")).body.result).toEqual({
-        settings: { on: false, name: "", url: "", code: "" },
+        settings: { on: false, name: "", url: "" },
         shown: false,
         passes: "admins",
         claimed: 0,
@@ -765,15 +765,13 @@ describe("禁放区 and 全站变灰, the owner's", () => {
       expect((await call("setPassFollow", [{ url: "https://example.com/x" }])).body.error).toBe(
         "链接要是 B 站的 https 链接，比如 https://space.bilibili.com/…，或者 https://b23.tv/…。",
       );
-      const filled = await call("setPassFollow", [{ on: true, name: "Breeze青嵐", url: "https://space.bilibili.com/12345", code: "k7m q2x" }]);
-      expect(filled.body.result).toMatchObject({
-        settings: { on: true, name: "Breeze青嵐", url: "https://space.bilibili.com/12345", code: "K7MQ2X" },
-        shown: true,
-      });
-      expect(passFollow().code).toBe("K7MQ2X");
-      // the same again changes nothing, and adds nothing to the log
-      expect((await call("setPassFollow", [{ code: "K7MQ2X" }])).status).toBe(200);
-      expect((await call("setPassFollow", [{ code: "N8P4ZR" }])).body.result.settings.code).toBe("N8P4ZR");
+      const FILLED = { on: true, name: "Breeze青嵐", url: "https://space.bilibili.com/12345" };
+      const filled = await call("setPassFollow", [FILLED]);
+      expect(filled.body.result).toMatchObject({ settings: FILLED, shown: true });
+      expect(passFollow()).toEqual(FILLED);
+      // the same again changes nothing, nor does a code (as a 管理台 of before sends it), and adds nothing to the log
+      expect((await call("setPassFollow", [{ name: "Breeze青嵐" }])).status).toBe(200);
+      expect((await call("setPassFollow", [{ code: "N8P4ZR" }])).body.result.settings).toEqual(FILLED);
       expect((await call("setPassFollow", [{ on: false }])).body.result).toMatchObject({ shown: false });
 
       // claimed: by one account yesterday and one today (the site's day turns at 4:00 in Beijing)
@@ -789,11 +787,9 @@ describe("禁放区 and 全站变灰, the owner's", () => {
       const log = (await db.select().from(adminLog).orderBy(adminLog.id)).map((l) => [l.what, l.detail]);
       expect(log).toEqual([
         ["gate.setup", null],
-        ["act.passFollow", "打开了，账号改成「Breeze青嵐」，链接改成 https://space.bilibili.com/12345，换了口令"],
-        ["act.passFollow", "换了口令"],
+        ["act.passFollow", "打开了，账号改成「Breeze青嵐」，链接改成 https://space.bilibili.com/12345"],
         ["act.passFollow", "关掉了"],
       ]);
-      expect(JSON.stringify(log)).not.toMatch(/K7MQ2X|N8P4ZR/);
     } finally {
       vi.unstubAllEnvs();
     }

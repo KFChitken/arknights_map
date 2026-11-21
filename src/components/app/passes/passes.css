@@ -165,7 +165,7 @@ button.gt-r:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 .gt-x.full { border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 10px; padding: 2px 7px; }
 .gt-x.ok { color: #5ad18b; }
 .gt-r.gift { margin-top: 4px; border-top: 1px dashed rgba(255, 255, 255, 0.12); border-radius: 0; padding-top: 3px; }
-/* 关注 B 站领券, above the day's tasks: its two lines, 去 B 站, and the code to type (16px, so a phone does not zoom in) */
+/* 关注 B 站领券, above the day's tasks: its lines, and 关注 (to B 站), or 领取 once back */
 .gt-follow { margin: 0 0 6px; padding: 6px 5px 4px; border-radius: 8px; background: rgba(255, 210, 63, 0.1); box-shadow: inset 0 0 0 1px rgba(255, 210, 63, 0.4); }
 .gt-follow.got { background: transparent; box-shadow: none; border-bottom: 1px dashed rgba(255, 255, 255, 0.12); border-radius: 0; }
 .gf-r { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
@@ -176,16 +176,9 @@ button.gt-r:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 .gf-t small { margin-top: 2px; font-size: 11.5px; color: #8f97a3; }
 .gf-go { justify-self: end; border: 1px solid rgba(255, 255, 255, 0.55); border-radius: 999px; padding: 4px 11px; color: #fff; font-size: 12.5px; font-weight: 700; white-space: nowrap; text-decoration: none; }
 .gf-go:hover { background: rgba(255, 255, 255, 0.1); }
-.gf-go:focus-visible, .gf-code button:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-.gf-code { display: flex; gap: 6px; margin: 7px 0 0 24px; }
-.gf-code input {
-  flex: 1; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 8px;
-  background: rgba(0, 0, 0, 0.3); color: #fff; font-size: 16px; letter-spacing: 0.08em; outline: none;
-}
-.gf-code input::placeholder { color: #8f97a3; letter-spacing: 0; font-size: 13px; }
-.gf-code input:focus { border-color: var(--p-yellow); }
-.gf-code button { flex: none; height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: var(--p-yellow); color: var(--p-ink); font-size: 13px; font-weight: 800; }
-.gf-code button:disabled { opacity: 0.5; }
+/* 领取, once back from B 站: after :hover, so it stays yellow under the pointer */
+.gf-go.claim { background: var(--p-yellow); border-color: var(--p-yellow); color: var(--p-ink); font-weight: 800; padding: 4px 13px; }
+.gf-go:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 .gf-msg { margin: 4px 0 0 24px; font-size: 12px; line-height: 1.5; color: #ffcfdc; }
 .gf-msg:empty { margin: 0; }
 .gt-follow.got .gf-msg { color: #5ad18b; }

@@ -6211,6 +6211,7 @@ export default function MapApp({
         <Passes
           favourites={me.profile.favourites}
           holder={displayName(me.profile)}
+          userId={me.id}
           start={passesFrom === "profile" ? "wallet" : "home"}
           onClose={() => {
             setPassesOpen(false);

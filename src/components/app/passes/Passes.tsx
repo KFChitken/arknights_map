@@ -8,7 +8,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent,
   type ReactNode,
@@ -22,7 +21,6 @@ import {
   bestOf,
   claimable,
   DAY_TICKETS,
-  FOLLOW_CODE_MAX,
   FOLLOW_TICKETS,
   GIFTS_IN_PER_DAY,
   goldLeft,
@@ -66,14 +64,15 @@ import "./passes.css";
  * (decided by the server before anything shows) come out of a reader face down and are turned over one by one;
  * 我的通行证 (each character opens to their whole pass, its look and the one worn), the wish list's editor, 概率说明
  * and 寻访记录. ×, ‹ 地图, a tap beside it and Escape close it, or step back a screen.
- * holder: the name printed on the player's passes (their card's, 匿名舟P for the anonymous); onRefused: a refusal the
- * map page answers itself (sign in, say again they are 18, agree to the privacy policy), which closes this first;
- * onWallet: the tickets the map's button shows and the pass worn, as they change; onGift: 送券, the 触须之交 page
- * picking whom to give a 寻访券 (this closes first).
+ * holder: the name printed on the player's passes (their card's, 匿名舟P for the anonymous); userId: their account;
+ * onRefused: a refusal the map page answers itself (sign in, say again they are 18, agree to the privacy policy),
+ * which closes this first; onWallet: the tickets the map's button shows and the pass worn, as they change; onGift:
+ * 送券, the 触须之交 page picking whom to give a 寻访券 (this closes first).
  */
 export default function Passes({
   favourites,
   holder,
+  userId,
   onClose,
   onGift,
   onRefused,
@@ -82,6 +81,7 @@ export default function Passes({
 }: {
   favourites: Record<Game, string[]>;
   holder: string;
+  userId: string;
   onClose: () => void;
   onGift: () => void;
   onRefused: (e: unknown) => void;
@@ -205,15 +205,15 @@ export default function Passes({
     });
   };
 
-  // 关注 B 站领券: the code sent after any claim on its way, as a draw waits for those. Answers null once claimed (the
-  // focus goes on as after a claim), else why not: "" when the map page says it
-  const follow = (code: string) => {
+  // 关注 B 站领券's 领取, after any claim on its way, as a draw waits for those. Answers null once claimed (the focus
+  // goes on as after a claim), else why not: "" when the map page says it
+  const follow = () => {
     setMsg("");
     return new Promise<string | null>((said) => {
       claims.current = claims.current.then(async () => {
         try {
           const was = stRef.current?.tickets ?? 0;
-          const s = await passesApi.follow(code);
+          const s = await passesApi.follow();
           if (live.current) {
             took(s);
             if (!stillMotion()) setBump({ n: Math.max(0, s.tickets - was), key: Date.now() });
@@ -327,6 +327,7 @@ export default function Passes({
           <>
             <Home
               st={st}
+              userId={userId}
               art={art}
               msg={msg}
               said={said}
@@ -570,26 +571,98 @@ function TaskIcon({ k }: { k: Task | "gift" | "follow" }) {
 }
 
 /**
- * 关注 B 站领券, at the top of 每日任务: the owner's B 站 account (去 B 站, in a new window), and the code it sends its
- * followers, typed and claimed; once claimed, 已领 until the next site day. onClaim answers null once claimed, else
- * why not ("": the map page says it).
+ * 关注 tapped, and the page never hidden (a window opened beside it): 领取 this long after. Left and back: 领取 at once,
+ * but never sooner than FOLLOW_SOON_MS after the tap
  */
-export function FollowRow({ f, onClaim }: { f: FollowTask; onClaim: (code: string) => Promise<string | null> }) {
+const FOLLOW_BACK_MS = 3000;
+const FOLLOW_SOON_MS = 1000;
+
+/** 关注 tapped on this device, by each player: the link it opened, so that another link wants another tap */
+const wentKey = (userId: string) => `zhoup.passFollowWent.${userId}`;
+function wentTo(userId: string): string | null {
+  try {
+    return localStorage.getItem(wentKey(userId));
+  } catch {
+    return null;
+  }
+}
+function rememberWent(userId: string, url: string) {
+  try {
+    localStorage.setItem(wentKey(userId), url);
+  } catch {
+    // storage blocked: this page alone remembers it
+  }
+}
+
+/**
+ * 关注 B 站领券, at the top of 每日任务: the owner's B 站 account, and 关注, which opens it in a new window. Back on
+ * this page (hidden or left, then shown again; or, never hidden, FOLLOW_BACK_MS on), 领取 takes its place, as it does
+ * from then on wherever this device remembers 关注 tapped by this player for this link. Nothing checks the follow
+ * itself. Once claimed, 已领 until the next site day. onClaim answers null once claimed, else why not ("": the map
+ * page says it).
+ */
+export function FollowRow({ f, userId, onClaim }: { f: FollowTask; userId: string; onClaim: () => Promise<string | null> }) {
   const t = T.passes.tasks.follow;
-  const [code, setCode] = useState("");
+  // the link this device remembers 关注 tapped for: 领取 while it is the task's
+  const [went, setWent] = useState(() => wentTo(userId));
+  // 关注 just tapped on this page, when and for which link: 领取 once back
+  const [going, setGoing] = useState<{ at: number; url: string } | null>(null);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
-  const send = async (e: FormEvent) => {
-    e.preventDefault();
+  const goRef = useRef<HTMLAnchorElement>(null);
+  const claimRef = useRef<HTMLButtonElement>(null);
+  // the focus was on 关注 as 领取 took its place: it goes on to 领取
+  const focusClaim = useRef(false);
+  useEffect(() => {
+    if (!going) return;
+    let left = false;
+    let timer = 0;
+    // 领取, ms after the tap at the earliest (no second tap of the same quick double lands on it)
+    const turn = (ms: number) => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(
+        () => {
+          focusClaim.current = document.activeElement === goRef.current;
+          setWent(going.url);
+          setGoing(null);
+        },
+        Math.max(0, going.at + ms - Date.now()),
+      );
+    };
+    const leave = () => {
+      left = true;
+    };
+    const back = () => {
+      if (left) turn(FOLLOW_SOON_MS);
+    };
+    const seen = () => (document.visibilityState === "hidden" ? leave() : back());
+    turn(FOLLOW_BACK_MS);
+    document.addEventListener("visibilitychange", seen);
+    window.addEventListener("blur", leave);
+    window.addEventListener("focus", back);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", seen);
+      window.removeEventListener("blur", leave);
+      window.removeEventListener("focus", back);
+    };
+  }, [going]);
+  useEffect(() => {
+    if (!focusClaim.current || went === null) return;
+    focusClaim.current = false;
+    claimRef.current?.focus({ preventScroll: true });
+  }, [went]);
+  const go = () => {
+    rememberWent(userId, f.url);
+    setGoing({ at: Date.now(), url: f.url });
+  };
+  const claim = async () => {
     if (busy) return;
-    if (!code.trim()) return setMsg(t.empty);
     setBusy(true);
     setMsg("");
-    const why = await onClaim(code);
+    const why = await onClaim();
     setBusy(false);
-    if (why !== null) return setMsg(why);
-    setMsg(fmt(t.ok, { n: FOLLOW_TICKETS }));
-    setCode("");
+    setMsg(why ?? fmt(t.ok, { n: FOLLOW_TICKETS }));
   };
   return (
     <div className={`gt-follow${f.got ? " got" : ""}`}>
@@ -597,35 +670,29 @@ export function FollowRow({ f, onClaim }: { f: FollowTask; onClaim: (code: strin
         <TaskIcon k="follow" />
         <span className="gf-t">
           <b>{fmt(t.title, { name: f.name })}</b>
-          <span>{t.dm}</span>
+          {!f.got && <span>{t.dm}</span>}
           <small>{fmt(t.once, { n: FOLLOW_TICKETS })}</small>
         </span>
         {f.got ? (
           <span className="gt-x ok">{t.got}</span>
+        ) : went === f.url ? (
+          <button ref={claimRef} type="button" className="gf-go claim" disabled={busy} onClick={() => void claim()}>
+            {t.claim}
+          </button>
         ) : (
-          <a className="gf-go" href={f.url} target="_blank" rel="noopener noreferrer" aria-label={fmt(t.goLabel, { name: f.name })}>
+          <a
+            ref={goRef}
+            className="gf-go"
+            href={f.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={fmt(t.goLabel, { name: f.name })}
+            onClick={go}
+          >
             {t.go}
           </a>
         )}
       </div>
-      {!f.got && (
-        <form className="gf-code" onSubmit={(e) => void send(e)}>
-          <input
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            maxLength={FOLLOW_CODE_MAX + 8}
-            placeholder={t.placeholder}
-            aria-label={t.label}
-            autoComplete="off"
-            autoCapitalize="characters"
-            spellCheck={false}
-            enterKeyHint="done"
-          />
-          <button type="submit" disabled={busy}>
-            {t.claim}
-          </button>
-        </form>
-      )}
       <p className="gf-msg" role="status">
         {msg}
       </p>
@@ -639,7 +706,18 @@ export function FollowRow({ f, onClaim }: { f: FollowTask; onClaim: (code: strin
  * room for: 满 50 张 when none). Above them, while it is on, 关注 B 站领券 (FollowRow); under them, while 触须之交 may
  * give them, the tickets given today: theirs at once.
  */
-export function Tasks({ st, onClaim, onFollow }: { st: PassState; onClaim: (task: Task) => void; onFollow: (code: string) => Promise<string | null> }) {
+export function Tasks({
+  st,
+  userId,
+  onClaim,
+  onFollow,
+}: {
+  st: PassState;
+  /** the player's account: what this device remembers of 关注 is theirs alone */
+  userId: string;
+  onClaim: (task: Task) => void;
+  onFollow: () => Promise<string | null>;
+}) {
   const t = T.passes.tasks;
   return (
     <div className="g-task">
@@ -650,7 +728,7 @@ export function Tasks({ st, onClaim, onFollow }: { st: PassState; onClaim: (task
         </b>
         <em>{fmtNodes(t.got, { b: <b>{gotToday(st.tasks)}</b>, n: DAY_TICKETS })}</em>
       </div>
-      {st.follow && <FollowRow f={st.follow} onClaim={onFollow} />}
+      {st.follow && <FollowRow f={st.follow} userId={userId} onClaim={onFollow} />}
       {st.tasks.map((k) => {
         const name = t.name[k.task];
         const n = claimable(k, st.tickets);
@@ -725,6 +803,7 @@ export function PoolPick({ pool, onPick }: { pool: PassPool; onPick: (pool: Pass
 
 function Home({
   st,
+  userId,
   art,
   msg,
   said,
@@ -743,6 +822,7 @@ function Home({
   onClose,
 }: {
   st: PassState;
+  userId: string;
   art: Art | null;
   msg: string;
   /** what the last claim brought, for screen readers */
@@ -757,8 +837,8 @@ function Home({
   hidden: boolean;
   onPull: (n: DrawSize) => void;
   onClaim: (task: Task) => void;
-  /** 关注 B 站领券's code: null once claimed, else why not ("": the map page says it) */
-  onFollow: (code: string) => Promise<string | null>;
+  /** 关注 B 站领券's 领取: null once claimed, else why not ("": the map page says it) */
+  onFollow: () => Promise<string | null>;
   onPool: (pool: PassPool) => void;
   /** a wish tapped: their pass over 寻访 */
   onPeek: (id: number, from: HTMLElement) => void;
@@ -819,7 +899,7 @@ function Home({
             )}
           </div>
         </div>
-        <Tasks st={st} onClaim={onClaim} onFollow={onFollow} />
+        <Tasks st={st} userId={userId} onClaim={onClaim} onFollow={onFollow} />
         <div className="g-btns">
           {/* too few tickets: dimmed, and pressed, says how to get more */}
           <button className={st.tickets < 1 ? "dim" : ""} onClick={() => onPull(1)} disabled={busy}>

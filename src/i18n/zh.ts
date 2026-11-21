@@ -587,9 +587,6 @@ export const zh = {
       nothingToClaim: "这一项现在没有能领的券。",
       claimFull: "手上满 {n} 张了，先抽掉一些再来领，今天之内都能领。",
       followOff: "现在没有关注领券。",
-      followEmpty: "先填口令。",
-      followWrong: "口令不对，看看 B 站私信或置顶动态里的最新口令。",
-      followTooMany: "填错太多次了，一小时后再试。",
       followGot: "这个账号已经领过了，每个账号只能领一次。",
     },
     records: {
@@ -3822,17 +3819,17 @@ export const zh = {
       gifts: "触须之交送的",
       giftsIn: "已到账 {n} 张",
       claimed: "领到 {n} 张寻访券，手上有 {tickets} 张了。",
-      /** 关注 B 站领券, at the top: the two lines as the owner wrote them (2026-11-17); name is the owner's B 站 account */
+      /**
+       * 关注 B 站领券, at the top: the two lines as the owner wrote them (2026-11-17); name is the owner's B 站 account.
+       * 2026-11-21: 关注 opens the account's page, and 领取 takes its place once back
+       */
       follow: {
         title: "关注{name}",
-        dm: "（已关注的请私信UP）",
+        dm: "（已关注的也点一下）",
         once: "一次性 · {n} 张",
-        go: "去 B 站",
+        go: "关注",
         goLabel: "去 B 站关注{name}（新窗口）",
-        placeholder: "填 B 站拿到的口令",
-        label: "B 站拿到的口令",
         claim: "领取",
-        empty: "先填口令。",
         ok: "领到了 {n} 张寻访券。",
         got: "已领",
       },

@@ -1,5 +1,5 @@
 import "server-only";
-import { randomInt, timingSafeEqual } from "node:crypto";
+import { randomInt } from "node:crypto";
 import { and, asc, count, desc, eq, exists, gte, inArray, isNull, lt, max, min, ne, or, sql, type AnyColumn } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import type { ArtFrame } from "../passArt";
@@ -7,7 +7,6 @@ import { CATALOG_IDS, GAME_OF, isPassChar, passChar, passCharNamed, poolIds } fr
 import {
   claimable,
   FOLLOW_TICKETS,
-  followCode,
   GIFTS_IN_PER_DAY,
   isDrawSize,
   isFancy,
@@ -47,7 +46,6 @@ import type { Exec } from "./guides";
 import { HttpError } from "./http";
 import { operatorArtIndex, type OperatorArtIndex } from "./operatorArt";
 import { artFrame, passArtIndex } from "./passArt";
-import { allow, hasRoom } from "./rateLimit";
 import { roachByFeedId } from "./roachFeed";
 import { passCounters, passes, passGifts, passWallets, users, type UserRow } from "./schema";
 import { errorCode } from "./signals";
@@ -492,34 +490,13 @@ export async function setPool(user: UserRow, pool: unknown, now = Date.now()): P
   return passState(user.id, now);
 }
 
-/** Wrong codes of 关注 B 站领券 an account may type in an hour, and an address (a network), before none is compared for the rest of it */
-const FOLLOW_WRONG_ACCOUNT = 5;
-const FOLLOW_WRONG_ADDRESS = 20;
-const FOLLOW_WRONG_MS = 3_600_000;
-
 /**
- * 关注 B 站领券: the code the owner's B 站 account sends, typed (spaces left out, in capitals), brings FOLLOW_TICKETS
- * once for each account, past TICKETS_CAP too. Only while the task shows (followShown), and the code as it is now:
- * one changed is refused at once. Wrong ones count, on this process, against the account and the address it came
- * from (ip), as the sign-in's do; past either's, nothing is compared till an hour after the first of them.
+ * 关注 B 站领券: FOLLOW_TICKETS once for each account, past TICKETS_CAP too, while the task shows (followShown).
+ * Nothing checks the follow itself: 寻访 shows 领取 once 关注 was tapped (src/components/app/passes/Passes.tsx
+ * FollowRow), and the server sees only that each account claims it once (followGot).
  */
-export async function claimFollow(user: UserRow, code: unknown, ip: string, now = Date.now()): Promise<PassState> {
-  const f = passFollow();
-  if (!followShown(f)) throw new HttpError(409, T.server.passes.followOff);
-  const typed = typeof code === "string" ? followCode(code) : "";
-  if (!typed) throw new HttpError(400, T.server.passes.followEmpty);
-  const mine = `passes:followWrong:${user.id}`;
-  const theirs = `passes:followWrongAt:${ip}`;
-  if (!hasRoom(mine, FOLLOW_WRONG_ACCOUNT, FOLLOW_WRONG_MS) || !hasRoom(theirs, FOLLOW_WRONG_ADDRESS, FOLLOW_WRONG_MS)) {
-    throw new HttpError(429, T.server.passes.followTooMany);
-  }
-  const a = Buffer.from(typed);
-  const b = Buffer.from(f.code);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) {
-    allow(mine, FOLLOW_WRONG_ACCOUNT, FOLLOW_WRONG_MS);
-    allow(theirs, FOLLOW_WRONG_ADDRESS, FOLLOW_WRONG_MS);
-    throw new HttpError(400, T.server.passes.followWrong);
-  }
+export async function claimFollow(user: UserRow, now = Date.now()): Promise<PassState> {
+  if (!followShown(passFollow())) throw new HttpError(409, T.server.passes.followOff);
   const [got] = await db
     .update(passWallets)
     .set({ tickets: sql`${passWallets.tickets} + ${FOLLOW_TICKETS}`, followGot: new Date(now) })
@@ -532,7 +509,7 @@ export async function claimFollow(user: UserRow, code: unknown, ip: string, now 
   return passState(user.id, now);
 }
 
-/** 关注 B 站领券 for the 管理台 (the owner's): as kept, the code too, whether 寻访 shows it, and the accounts that claimed it, today's too */
+/** 关注 B 站领券 for the 管理台 (the owner's): as kept, whether 寻访 shows it, and the accounts that claimed it, today's too */
 export async function passFollowDesk(now = Date.now()): Promise<PassFollowDesk> {
   const settings = passFollow();
   const since = new Date(siteDayStart(siteDay(now)));

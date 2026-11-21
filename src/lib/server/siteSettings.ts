@@ -4,7 +4,7 @@ import { GRAY_MAX_DAYS, type GrayState } from "../adminConsole";
 import { beijingDate } from "../beijing";
 import { CAP_RANGE, LISTEN_DEFAULTS, ROOM_RANGE, type ListenSettings } from "../listen";
 import { nextMemorial } from "../memorials";
-import { FOLLOW_CODE_MAX, FOLLOW_NAME_MAX, followCode, type PassFollow } from "../passes";
+import { FOLLOW_NAME_MAX, type PassFollow } from "../passes";
 import { db } from "./db";
 import { HttpError } from "./http";
 import { onReload, reloadEverywhere } from "./live";
@@ -17,7 +17,7 @@ import { errorCode } from "./signals";
  * (reloadEverywhere), and each reads them again every RELOAD_MS anyway: 全站变灰, until when everyone sees the site in
  * gray, for a national day of mourning; 听歌's (src/lib/server/listen.ts), paused or not, how many may listen at
  * once, how many to a room; 一起卫戍's (src/lib/server/squad.ts), closed for now or open, with the owner's line;
- * 关注 B 站领券's (src/lib/server/passes.ts claimFollow), whose code changed is the old one refused at once; and
+ * 关注 B 站领券's (src/lib/server/passes.ts claimFollow), on or off, with the account it opens; and
  * 手写榜's (src/lib/server/handwriting.ts), paused or not. It lives on globalThis because Next.js can load this module
  * once per route bundle.
  */
@@ -29,7 +29,7 @@ const SQUAD_DEFAULTS: SquadSettings = { closed: false, note: "" };
 export const SQUAD_NOTE_MAX = 60;
 
 /** 关注 B 站领券's: off, and nothing filled, until the owner fills it */
-const PASS_FOLLOW_DEFAULTS: PassFollow = { on: false, name: "", url: "", code: "" };
+const PASS_FOLLOW_DEFAULTS: PassFollow = { on: false, name: "", url: "" };
 /** 手写榜's (src/lib/server/handwriting.ts): paused (no board shown, nothing put up, nothing rated; what is up and its ratings stay) */
 export type BoardSettings = { paused: boolean };
 const BOARD_DEFAULTS: BoardSettings = { paused: false };
@@ -240,30 +240,30 @@ export function isBilibiliUrl(url: string): boolean {
   }
 }
 
-/** pass_follow's value: { on, name, url, code }, each as it may be kept, else as if never filled */
+/**
+ * pass_follow's value: { on, name, url }, each as it may be kept, else as if never filled. Anything else kept with them
+ * (the code kept before 2026-11-21) is left out, and so gone from the row at the next save.
+ */
 function passFollowOf(value: unknown): PassFollow {
   const v = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   const name = typeof v.name === "string" ? v.name.trim() : "";
   const url = typeof v.url === "string" ? v.url.trim() : "";
-  const code = typeof v.code === "string" ? followCode(v.code) : "";
   return {
     on: v.on === true,
     name: name.length <= FOLLOW_NAME_MAX ? name : "",
     url: isBilibiliUrl(url) ? url : "",
-    code: code.length <= FOLLOW_CODE_MAX ? code : "",
   };
 }
 
-/** 关注 B 站领券's settings now, the code too, for the server and the 管理台 alone: from memory, never the database */
+/** 关注 B 站领券's settings now, for the server and the 管理台: from memory, never the database */
 export const passFollow = (): PassFollow => held.passFollow;
 
-/** Whether 寻访 shows the task: on, with the account, its link and a code all filled */
-export const followShown = (f: PassFollow) => f.on && Boolean(f.name && f.url && f.code);
+/** Whether 寻访 shows the task: on, with the account and its link both filled */
+export const followShown = (f: PassFollow) => f.on && Boolean(f.name && f.url);
 
 /**
- * 关注 B 站领券 changed by byId (the owner): on, name, url, code, each only if given (the code as it is compared:
- * no spaces, capitals). On every process at once, so an old code is refused from then on everywhere. Says what they
- * are now.
+ * 关注 B 站领券 changed by byId (the owner): on, name, url, each only if given (anything else given is ignored). On
+ * every process at once. Says what they are now.
  */
 export async function setPassFollow(byId: string, change: unknown, now = Date.now()): Promise<PassFollow> {
   const c = change && typeof change === "object" ? (change as Record<string, unknown>) : {};
@@ -282,11 +282,6 @@ export async function setPassFollow(byId: string, change: unknown, now = Date.no
     const url = typeof c.url === "string" ? c.url.trim() : null;
     if (url === null || (url && !isBilibiliUrl(url))) throw new HttpError(400, "链接要是 B 站的 https 链接，比如 https://space.bilibili.com/…，或者 https://b23.tv/…。");
     next.url = url;
-  }
-  if ("code" in c) {
-    const code = typeof c.code === "string" ? followCode(c.code) : null;
-    if (code === null || code.length > FOLLOW_CODE_MAX) throw new HttpError(400, `口令最多 ${FOLLOW_CODE_MAX} 个字，空格不算。`);
-    next.code = code;
   }
   const set = { value: next, updatedAt: new Date(now), updatedBy: byId };
   await db

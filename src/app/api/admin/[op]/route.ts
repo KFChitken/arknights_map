@@ -104,13 +104,12 @@ const squadChange = (a: SquadSettings, b: SquadSettings) =>
     .filter(Boolean)
     .join("，");
 
-/** What a change to 关注 B 站领券 did, for the 操作记录, never the code itself: empty when it changed nothing */
+/** What a change to 关注 B 站领券 did, for the 操作记录: empty when it changed nothing */
 const followChange = (a: PassFollow, b: PassFollow) =>
   [
     a.on !== b.on ? (b.on ? "打开了" : "关掉了") : "",
     a.name !== b.name ? (b.name ? `账号改成「${b.name}」` : "去掉了账号") : "",
     a.url !== b.url ? (b.url ? `链接改成 ${b.url}` : "去掉了链接") : "",
-    a.code !== b.code ? (b.code ? "换了口令" : "去掉了口令") : "",
   ]
     .filter(Boolean)
     .join("，");
@@ -392,7 +391,7 @@ export const POST = route(
         break;
       }
 
-      // 关注 B 站领券 (the owner's, src/lib/server/passes.ts claimFollow): as kept, the code too, and who claimed it; args[0] changes it
+      // 关注 B 站领券 (the owner's, src/lib/server/passes.ts claimFollow): as kept, and who claimed it; args[0] changes it
       case "passFollow":
         result = await passFollowDesk(now);
         break;

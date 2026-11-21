@@ -30,7 +30,6 @@ import {
   wornPasses,
 } from "./passes";
 import * as passArt from "./passArt";
-import { forgetHits } from "./rateLimit";
 import { admins, passCounters, passes, passWallets, siteSettings, users, type UserRow } from "./schema";
 import { loadSettings, setPassFollow } from "./siteSettings";
 import * as world from "./world";
@@ -333,92 +332,77 @@ describe("卡池", () => {
 });
 
 describe("关注 B 站领券", () => {
-  const FOLLOW = { on: true, name: "Breeze青嵐", url: "https://space.bilibili.com/12345", code: "K7MQ2X" };
-  const WRONG = "口令不对，看看 B 站私信或置顶动态里的最新口令。";
-  const TOO_MANY = "填错太多次了，一小时后再试。";
+  const FOLLOW = { on: true, name: "Breeze青嵐", url: "https://space.bilibili.com/12345" };
+  const GOT = { status: 409, message: "这个账号已经领过了，每个账号只能领一次。" };
   const opened = async (email: string) => {
     const u = await player(email);
     await openWallet(u, NOON);
     return u;
   };
 
-  beforeEach(() => forgetHits());
   afterEach(async () => {
-    vi.useRealTimers();
     await db.delete(siteSettings);
     await loadSettings();
   });
 
-  it("brings 10 once for the code, spaces and capitals aside, past 50 too, and shows 已领 that day only", async () => {
+  it("brings 10 once an account, with nothing to type, past 50 too, and shows 已领 that day only", async () => {
     const a = await opened("a@example.com");
     expect((await passState(a.id, NOON)).follow).toBeNull();
     await setPassFollow(a.id, FOLLOW);
     expect((await passState(a.id, NOON)).follow).toEqual({ name: "Breeze青嵐", url: "https://space.bilibili.com/12345", got: false });
     await setWallet(a.id, { tickets: 48 });
-    const st = await claimFollow(a, " k7m q2X ", "10.0.0.1", NOON);
+    const st = await claimFollow(a, NOON);
     expect(st).toMatchObject({ tickets: 58, follow: { got: true } });
     expect((await wallet(a.id)).followGot).toEqual(new Date(NOON));
-    // once an account, whatever is typed
-    expect(await refusal(claimFollow(a, "K7MQ2X", "10.0.0.1", NOON + 1000))).toEqual({ status: 409, message: "这个账号已经领过了，每个账号只能领一次。" });
+    // once an account, that day and any after
+    expect(await refusal(claimFollow(a, NOON + 1000))).toEqual(GOT);
     expect((await wallet(a.id)).tickets).toBe(58);
     // 已领 till the site day turns, then gone
     expect((await passState(a.id, Date.parse("2026-11-15T03:59:00+08:00"))).follow).toMatchObject({ got: true });
-    expect((await passState(a.id, Date.parse("2026-11-15T04:00:00+08:00"))).follow).toBeNull();
+    const next = Date.parse("2026-11-15T04:00:00+08:00");
+    expect((await passState(a.id, next)).follow).toBeNull();
+    expect(await refusal(claimFollow(a, next))).toEqual(GOT);
+    expect((await wallet(a.id)).tickets).toBe(58);
   });
 
-  it("refuses a wrong code, and after 5 in an hour the right one too, for that account alone", async () => {
+  it("gives it once when 领取 comes twice at the same moment", async () => {
+    const a = await opened("a@example.com");
+    await setPassFollow(a.id, FOLLOW);
+    const both = await Promise.allSettled([claimFollow(a, NOON), claimFollow(a, NOON)]);
+    expect(both.map((r) => r.status).sort()).toEqual(["fulfilled", "rejected"]);
+    expect((await wallet(a.id)).tickets).toBe(WELCOME_TICKETS + 10);
+  });
+
+  it("counts a claim of before, with the code of then, as this one", async () => {
+    const a = await opened("a@example.com");
+    await setPassFollow(a.id, FOLLOW);
+    const before = new Date(NOON - 86_400_000);
+    await setWallet(a.id, { followGot: before });
+    expect((await passState(a.id, NOON)).follow).toBeNull();
+    expect(await refusal(claimFollow(a, NOON))).toEqual(GOT);
+    expect((await wallet(a.id)).followGot).toEqual(before);
+  });
+
+  it("gives nothing while it is off or misses its account or link; 寻访 shows nothing then", async () => {
     const a = await opened("a@example.com");
     const b = await opened("b@example.com");
     await setPassFollow(a.id, FOLLOW);
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(NOON);
-    for (let i = 0; i < 5; i++) expect(await refusal(claimFollow(a, `WRONG${i}`, "10.0.0.1", NOON))).toEqual({ status: 400, message: WRONG });
-    expect(await refusal(claimFollow(a, "K7MQ2X", "10.0.0.1", NOON))).toEqual({ status: 429, message: TOO_MANY });
-    expect(await refusal(claimFollow(a, "K7MQ2X", "10.0.0.2", NOON))).toEqual({ status: 429, message: TOO_MANY });
-    // someone else on the same network still may
-    expect((await claimFollow(b, "K7MQ2X", "10.0.0.1", NOON)).follow).toMatchObject({ got: true });
-    // an hour after the first wrong one
-    vi.setSystemTime(NOON + 3_600_000);
-    expect((await claimFollow(a, "K7MQ2X", "10.0.0.1", NOON)).tickets).toBe(WELCOME_TICKETS + 10);
-  });
-
-  it("stops a network after 20 wrong codes in an hour, whoever typed them; nothing typed counts for nothing", async () => {
-    const someone = await opened("a@example.com");
-    await setPassFollow(someone.id, FOLLOW);
-    for (let p = 0; p < 4; p++) {
-      const u = await opened(`p${p}@example.com`);
-      for (let i = 0; i < 5; i++) expect((await refusal(claimFollow(u, "NOPE", "10.0.0.9", NOON))).status).toBe(400);
-    }
-    expect(await refusal(claimFollow(someone, "K7MQ2X", "10.0.0.9", NOON))).toEqual({ status: 429, message: TOO_MANY });
-    for (const nothing of ["", "   ", null, undefined, 42, ["K7MQ2X"]]) {
-      expect(await refusal(claimFollow(someone, nothing, "10.0.0.8", NOON)), String(nothing)).toEqual({ status: 400, message: "先填口令。" });
-    }
-    expect((await claimFollow(someone, "k7mq2x", "10.0.0.8", NOON)).follow).toMatchObject({ got: true });
-  });
-
-  it("takes the code as it is now, and nothing while it is off or has no code, its account or link; 寻访 shows nothing then", async () => {
-    const a = await opened("a@example.com");
-    const b = await opened("b@example.com");
-    await setPassFollow(a.id, FOLLOW);
-    await setPassFollow(a.id, { code: "abc 234" });
-    expect(await refusal(claimFollow(a, "K7MQ2X", "10.0.0.1", NOON))).toEqual({ status: 400, message: WRONG });
-    expect((await claimFollow(a, "ABC234", "10.0.0.1", NOON)).follow).toMatchObject({ got: true });
     // the switch, then each of what it needs
-    for (const off of [{ on: false }, { on: true, code: "" }, { code: "ABC234", url: "" }, { url: FOLLOW.url, name: "" }]) {
+    for (const off of [{ on: false }, { on: true, url: "" }, { url: FOLLOW.url, name: "" }]) {
       await setPassFollow(a.id, off);
       expect((await passState(b.id, NOON)).follow, JSON.stringify(off)).toBeNull();
-      expect(await refusal(claimFollow(b, "ABC234", "10.0.0.1", NOON)), JSON.stringify(off)).toEqual({ status: 409, message: "现在没有关注领券。" });
+      expect(await refusal(claimFollow(b, NOON)), JSON.stringify(off)).toEqual({ status: 409, message: "现在没有关注领券。" });
     }
     await setPassFollow(a.id, { name: "Breeze青嵐" });
-    expect((await claimFollow(b, "ABC234", "10.0.0.1", NOON)).tickets).toBe(WELCOME_TICKETS + 10);
+    expect((await claimFollow(b, NOON)).tickets).toBe(WELCOME_TICKETS + 10);
   });
 
   it("waits for 寻访 to be opened first", async () => {
     const a = await player("a@example.com");
     await setPassFollow(a.id, FOLLOW);
-    expect(await refusal(claimFollow(a, "K7MQ2X", "10.0.0.1", NOON))).toEqual({ status: 409, message: "先打开寻访页。" });
+    expect(await refusal(claimFollow(a, NOON))).toEqual({ status: 409, message: "先打开寻访页。" });
     await openWallet(a, NOON);
-    expect((await claimFollow(a, "K7MQ2X", "10.0.0.1", NOON)).tickets).toBe(WELCOME_TICKETS + 10);
+    expect((await claimFollow(a, NOON)).tickets).toBe(WELCOME_TICKETS + 10);
   });
 });
 

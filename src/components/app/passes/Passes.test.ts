@@ -1,6 +1,6 @@
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { passCharNamed } from "@/lib/passCatalog";
 import { TASK_MAX, TICKETS_CAP, type FollowTask, type PassState, type Task, type WishOwned } from "@/lib/passes";
 import { Detail, layout, Peek, PoolPick, poolLine, sampleWidth, Tasks, WishSlots } from "./Passes";
@@ -55,7 +55,8 @@ const state = (tasks: PassState["tasks"], more: Partial<PassState> = {}): PassSt
   follow: null,
   ...more,
 });
-const tasksOf = (st: PassState) => renderToStaticMarkup(createElement(Tasks, { st, onClaim: () => {}, onFollow: async () => null }));
+const tasksOf = (st: PassState, userId = "u1") =>
+  renderToStaticMarkup(createElement(Tasks, { st, userId, onClaim: () => {}, onFollow: async () => null }));
 /** A row's little boxes, in order: g claimed, d done and not claimed yet, - not done */
 const boxes = (html: string) =>
   [...html.matchAll(/<span class="gt-p" aria-hidden="true">(.*?)<\/span>/g)].map((m) =>
@@ -89,28 +90,54 @@ describe("每日任务 on the 寻访 page", () => {
 
 describe("关注 B 站领券 on the 寻访 page", () => {
   const f: FollowTask = { name: "Breeze青嵐", url: "https://space.bilibili.com/12345", got: false };
+  /** What this device's storage keeps (blocked: it refuses, as a browser may) */
+  const kept = (rows: Record<string, string>, blocked = false) =>
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => {
+        if (blocked) throw new Error("blocked");
+        return rows[k] ?? null;
+      },
+    });
+  afterEach(() => vi.unstubAllGlobals());
 
-  it("comes first in 每日任务 while it is on: the account, 去 B 站 in a new window, and where to type its code", () => {
+  it("comes first in 每日任务 while it is on: the account, and 关注, which opens it in a new window", () => {
     const html = tasksOf(state([task("touch", 0, 0), task("declare", 0, 0)], { follow: f }));
     const at = html.indexOf('<div class="gt-follow">');
     expect(at).toBeGreaterThan(html.indexOf('class="gt-h"'));
     expect(at).toBeLessThan(html.indexOf("碰一碰别人"));
-    expect(html).toContain('<span class="gf-t"><b>关注Breeze青嵐</b><span>（已关注的请私信UP）</span><small>一次性 · 10 张</small></span>');
+    expect(html).toContain('<span class="gf-t"><b>关注Breeze青嵐</b><span>（已关注的也点一下）</span><small>一次性 · 10 张</small></span>');
     expect(html).toContain(
-      '<a class="gf-go" href="https://space.bilibili.com/12345" target="_blank" rel="noopener noreferrer" aria-label="去 B 站关注Breeze青嵐（新窗口）">去 B 站</a>',
+      '<a class="gf-go" href="https://space.bilibili.com/12345" target="_blank" rel="noopener noreferrer" aria-label="去 B 站关注Breeze青嵐（新窗口）">关注</a>',
     );
-    expect(html).toMatch(/<form class="gf-code"><input [^>]*placeholder="填 B 站拿到的口令" aria-label="B 站拿到的口令"[^>]*\/><button type="submit">领取<\/button><\/form>/);
+    expect(html).not.toContain("<form");
+    expect(html).not.toContain("<input");
+    expect(html).not.toContain("领取");
     expect(html).toContain('<p class="gf-msg" role="status"></p>');
     // its tickets are not the day's: 今天领了 counts the tasks under it
     expect(html).toContain("今天领了<b>0</b>/ 10");
   });
 
-  it("says 已领 the day it was claimed, with nothing to type and no way to B 站, and is not there while it is off", () => {
+  it("is 领取 where this device remembers 关注 tapped by this player, for this link", () => {
+    kept({ "zhoup.passFollowWent.u1": f.url });
+    const html = tasksOf(state([task("touch", 0, 0)], { follow: f }));
+    expect(html).toContain('<button type="button" class="gf-go claim">领取</button>');
+    expect(html).not.toContain("<a ");
+    expect(html).toContain("<span>（已关注的也点一下）</span>");
+    // another player on this device, or a link changed since: 关注 again
+    expect(tasksOf(state([task("touch", 0, 0)], { follow: f }), "u2")).toContain(">关注</a>");
+    expect(tasksOf(state([task("touch", 0, 0)], { follow: { ...f, url: "https://space.bilibili.com/678" } }))).toContain(">关注</a>");
+    // storage blocked: 关注, which works all the same
+    kept({}, true);
+    expect(tasksOf(state([task("touch", 0, 0)], { follow: f }))).toContain(">关注</a>");
+  });
+
+  it("says 已领 the day it was claimed, with neither 关注 nor 领取 nor its second line, and is not there while it is off", () => {
+    kept({ "zhoup.passFollowWent.u1": f.url });
     const got = tasksOf(state([task("touch", 0, 0)], { follow: { ...f, got: true } }));
     expect(got).toContain('<div class="gt-follow got">');
-    expect(got).toContain('<span class="gt-x ok">已领</span>');
-    expect(got).not.toContain("<form");
+    expect(got).toContain('<span class="gf-t"><b>关注Breeze青嵐</b><small>一次性 · 10 张</small></span><span class="gt-x ok">已领</span>');
     expect(got).not.toContain("gf-go");
+    expect(got).not.toContain("（已关注的也点一下）");
     expect(tasksOf(state([task("touch", 0, 0)]))).not.toContain("gt-follow");
   });
 });

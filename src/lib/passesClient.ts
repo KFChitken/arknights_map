@@ -32,8 +32,8 @@ export const passesApi = {
   draw: (n: DrawSize) => call<{ drawn: Drawn[]; state: PassState }>("POST", "draw", { n }),
   /** 每日任务: claim the tickets of one task done today */
   claim: (task: Task) => call<PassState>("POST", "claim", { task }),
-  /** 关注 B 站领券: the code the owner's B 站 account sent */
-  follow: (code: string) => call<PassState>("POST", "follow", { code }),
+  /** 关注 B 站领券: 领取, once 关注 was tapped */
+  follow: () => call<PassState>("POST", "follow"),
   wish: (ids: number[]) => call<PassState>("PUT", "wish", { ids }),
   /** 卡池: both games, or one, from the next draw on */
   pool: (pool: PassPool) => call<PassState>("PUT", "pool", { pool }),

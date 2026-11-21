@@ -4,8 +4,6 @@ import {
   bestOf,
   claimable,
   DAY_TICKETS,
-  FOLLOW_CODE_CHARS,
-  followCode,
   goldKind,
   gotToday,
   isDrawSize,
@@ -19,7 +17,6 @@ import {
   passPoolOf,
   PITY,
   pityLeft,
-  randomFollowCode,
   rollChars,
   styleFor,
   TASK_MAX,
@@ -376,22 +373,5 @@ describe("每日任务", () => {
     expect(passesDot(true, 9, one)).toBe(true);
     expect(passesDot(true, 10, none)).toBe(true);
     expect(passesDot(true, 0, [{ done: 2, got: 2 }])).toBe(false);
-  });
-});
-
-describe("关注 B 站领券's code", () => {
-  it("is compared with no spaces, in capitals", () => {
-    expect(followCode(" k7m q2x\t")).toBe("K7MQ2X");
-    expect(followCode("  \n ")).toBe("");
-  });
-
-  it("comes from 「随机生成」 as 6 of 32 characters, none read as another, each byte picking one as likely as any", () => {
-    expect(FOLLOW_CODE_CHARS).toHaveLength(32);
-    expect(new Set(FOLLOW_CODE_CHARS).size).toBe(32);
-    expect(FOLLOW_CODE_CHARS).not.toMatch(/[01IO]/);
-    expect(randomFollowCode(new Uint8Array([0, 1, 2, 31, 32, 255]))).toBe("234Z2Z");
-    const made = randomFollowCode();
-    expect(made).toMatch(/^[2-9A-HJ-NP-Z]{6}$/);
-    expect(followCode(made)).toBe(made);
   });
 });

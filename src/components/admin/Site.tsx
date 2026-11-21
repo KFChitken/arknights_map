@@ -8,7 +8,7 @@ import { CAP_RANGE, ROOM_RANGE, type ListenDesk } from "@/lib/listen";
 import type { SquadDesk } from "@/lib/squad";
 import { memorialWords } from "@/lib/memorials";
 import { CODE_WORDS, type NameWord } from "@/lib/nameRules";
-import { FOLLOW_CODE_MAX, FOLLOW_NAME_MAX, FOLLOW_TICKETS, followCode, randomFollowCode, type PassFollow, type PassFollowDesk } from "@/lib/passes";
+import { FOLLOW_NAME_MAX, FOLLOW_TICKETS, type PassFollow, type PassFollowDesk } from "@/lib/passes";
 import { RULES, type BanInfo } from "@/lib/safety";
 import { lasted, LEVEL_MARK, mainlandWords, type IncidentView, type SiteStatus } from "@/lib/siteStatus";
 import { BOARD, type BoardDesk } from "@/lib/study/board";
@@ -558,15 +558,15 @@ function SquadPanel() {
 function followStatus(d: PassFollowDesk) {
   if (d.passes === "off") return "通行证是关的（PASSES=off）：谁都看不到寻访，这一行也不出现";
   if (!d.settings.on) return "开关关着：寻访页上没有这一行";
-  const missing = [!d.settings.name && "账号", !d.settings.url && "链接", !d.settings.code && "口令"].filter(Boolean);
+  const missing = [!d.settings.name && "账号", !d.settings.url && "链接"].filter(Boolean);
   if (missing.length) return `还没填${missing.join("、")}：寻访页上没有这一行`;
   return d.passes === "admins" ? "寻访页上有这一行，只有站长和管理员看得到（PASSES=admins）" : "寻访页上有这一行，能抽通行证的舟P都看得到";
 }
 
 /**
- * 关注 B 站领券 (src/lib/server/passes.ts claimFollow), the owner's: the line at the top of 寻访's 每日任务 that brings
- * FOLLOW_TICKETS once for each account, for the code the owner's B 站 account sends its followers. It shows while it
- * is on with the account, its link and a code all filled. The code is kept on the server: nowhere but here shows it.
+ * 关注 B 站领券 (src/lib/server/passes.ts claimFollow), the owner's: the line at the top of 寻访's 每日任务 whose 关注
+ * opens the owner's B 站 account, and whose 领取, once back, brings FOLLOW_TICKETS once for each account; nothing
+ * checks the follow itself. It shows while it is on with the account and its link both filled.
  */
 function PassFollowPanel() {
   const { call, say } = useConsole();
@@ -598,14 +598,13 @@ function PassFollowPanel() {
     setBusy(false);
   };
   const kept = d?.settings;
-  const changed =
-    form && kept && (form.on !== kept.on || form.name.trim() !== kept.name || form.url.trim() !== kept.url || followCode(form.code) !== kept.code);
+  const changed = form && kept && (form.on !== kept.on || form.name.trim() !== kept.name || form.url.trim() !== kept.url);
   const put = (change: Partial<PassFollow>) => setForm((f) => f && { ...f, ...change });
   return (
     <section className="ac-panel ac-tool wide" aria-label="关注 B 站领券">
       <PanelHead title="关注 B 站领券" aside="只有站长" />
       <p className="ac-sub">
-        寻访页「每日任务」最上面一行：玩家点「去 B 站」关注你，拿到口令回来填，每个账号能领一次 {FOLLOW_TICKETS} 张寻访券（不受手上 50 张的限制）。打开开关、账号、链接、口令都填好才出现。口令只存在服务器上，除了这里，网页上哪里都看不到。
+        寻访页「每日任务」最上面一行：玩家点「关注」跳到你的 B 站主页，回到网页就能领，每个账号能领一次 {FOLLOW_TICKETS} 张寻访券（不受手上 50 张的限制）。不核实是不是真的关注了。打开开关、账号、链接都填好才出现。
       </p>
       {!d || !form ? (
         <p className="ac-sub">{note ?? "正在读取…"}</p>
@@ -643,7 +642,7 @@ function PassFollowPanel() {
               />
             </div>
             <div className="ac-field">
-              <label htmlFor="pass-follow-url">链接（点「去 B 站」打开）</label>
+              <label htmlFor="pass-follow-url">链接（点「关注」打开）</label>
               <input
                 id="pass-follow-url"
                 type="url"
@@ -653,28 +652,11 @@ function PassFollowPanel() {
               />
             </div>
           </div>
-          <div className="ac-field">
-            <label htmlFor="pass-follow-code">口令（不分大小写，空格不算）</label>
-            <div className="ac-inline-form">
-              <input
-                id="pass-follow-code"
-                value={form.code}
-                maxLength={FOLLOW_CODE_MAX + 8}
-                autoComplete="off"
-                spellCheck={false}
-                onChange={(e) => put({ code: e.target.value })}
-              />
-              <button type="button" className="ac-btn" onClick={() => put({ code: randomFollowCode() })}>
-                随机生成
-              </button>
-            </div>
-          </div>
           <div className="ac-row">
             <button type="button" className="ac-btn primary" disabled={busy || !changed} onClick={() => void save()}>
               保存
             </button>
           </div>
-          <p className="ac-muted small">改了口令，旧的马上失效。已经领过的人不受影响。</p>
         </>
       )}
       {d && note && <p className="ac-error">{note}</p>}

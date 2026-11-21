@@ -44,25 +44,15 @@ export const GIFTS_IN_PER_DAY = 3;
  */
 export type GiftState = "ok" | "given" | "full";
 /**
- * 关注 B 站领券: the owner's B 站 account sends its followers a code (the owner sets it in the 管理台, site_settings
- * pass_follow); typed on 寻访, it brings FOLLOW_TICKETS once for each account, past TICKETS_CAP too. The code is
- * compared on the server alone: the page is told the task's account and link, and whether it was claimed.
+ * 关注 B 站领券: the owner's B 站 account (the owner sets it in the 管理台, site_settings pass_follow). On 寻访, 关注
+ * opens its page; back on the site, 领取 brings FOLLOW_TICKETS once for each account, past TICKETS_CAP too. Nothing
+ * checks the follow itself: the page is told the task's account and link, and whether it was claimed.
  */
 export const FOLLOW_TICKETS = 10;
-/** 「随机生成」's code: FOLLOW_CODE_LENGTH of these, nothing that reads like another (no 0 O 1 I) */
-export const FOLLOW_CODE_CHARS = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-export const FOLLOW_CODE_LENGTH = 6;
-/** A code at most this long, spaces left out */
-export const FOLLOW_CODE_MAX = 20;
 /** The account's name, at most this long */
 export const FOLLOW_NAME_MAX = 30;
-/** A code as it is compared: spaces left out, in capitals */
-export const followCode = (typed: string) => typed.replace(/\s+/g, "").toUpperCase();
-/** A new code for 「随机生成」: 32 characters, so each random byte picks one as likely as any other */
-export const randomFollowCode = (bytes: Uint8Array = crypto.getRandomValues(new Uint8Array(FOLLOW_CODE_LENGTH))) =>
-  Array.from(bytes, (b) => FOLLOW_CODE_CHARS[b % FOLLOW_CODE_CHARS.length]).join("");
-/** 关注 B 站领券 as the owner keeps it (site_settings pass_follow): on or off, the account's name, its link, the code */
-export type PassFollow = { on: boolean; name: string; url: string; code: string };
+/** 关注 B 站领券 as the owner keeps it (site_settings pass_follow): on or off, the account's name, its link */
+export type PassFollow = { on: boolean; name: string; url: string };
 /** The task on 寻访, while it is on with all of it filled: the account and its link, and whether this player claimed it (that day) */
 export type FollowTask = { name: string; url: string; got: boolean };
 /** The 管理台's view of it: as kept, whether 寻访 shows it, PASSES (who may see 寻访 at all), and how many accounts claimed it */
