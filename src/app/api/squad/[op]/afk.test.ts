@@ -79,7 +79,10 @@ const at = (ms: number) => {
   vi.setSystemTime(new Date(ms));
 };
 
-/** The 站长's room with a and b in it, SQUAD on; their pages saying they are here (the 站长's too) */
+/**
+ * The 站长's room with a and b in it, SQUAD on; their pages saying they are here (the 站长's too). a and b come in at the
+ * same moment: a, numbered lower, counts as there longer (sweepAfk's heir).
+ */
 async function cast() {
   vi.stubEnv("SQUAD", "on");
   const host = await player("owner");

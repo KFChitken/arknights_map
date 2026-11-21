@@ -2318,7 +2318,8 @@ async function sweepAfk(now: number) {
       .select()
       .from(squadMembers)
       .where(and(eq(squadMembers.roomId, roomId), isNull(squadMembers.leftAt)))
-      .orderBy(asc(squadMembers.joinedAt));
+      // two in at the same moment: the lower number first, so the heir is always the same
+      .orderBy(asc(squadMembers.joinedAt), asc(squadMembers.handle));
     const afk = (m: (typeof people)[number]) => afkFor("wait", m.awayAt?.getTime() ?? null, r.waitedAt.getTime(), now) ?? -1;
     // the one there longest whose page is here, else one away but not 暂离 yet
     const heir = (hostId: string) =>
