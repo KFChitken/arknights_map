@@ -20,7 +20,10 @@ export type Round = {
   verdict: string;
   /** Another round played differently, offered instead of 再来一局 (the stopwatch, passed: 藏数字再来) */
   again?: { label: string; mode: string };
-  /** Passed at exactly 325, 命运的 325 (叠罗汉: none fell, 325 roaches stacked; 控分肉鸽: 325 at the top); nothing reads it yet */
+  /**
+   * Passed at exactly 325 (the stopwatch: stopped at 3.25; 叠罗汉: none fell, 325 roaches stacked; 控分肉鸽: 325 at the
+   * top): a player's page tells the server, for the hidden 称号 命运的 325 (Study.tsx)
+   */
   fate?: boolean;
   /** 徒手写: the paper handed in, as it is sent (src/lib/study/board.ts tidySheet) and as it was marked, for the 手写榜 */
   paper?: Sheet;

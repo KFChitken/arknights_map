@@ -146,8 +146,8 @@ describe("/about", () => {
     for (const said of [
       `within ${DECLARATION_RADIUS_KM}&nbsp;km`,
       `up to ${MAX_CLONES} clones`,
-      // 香艳制作人's not yet: HAIMAO is off here
-      `${BADGES.filter((b) => !b.unlisted && !b.guide).length} titles to earn`,
+      // 香艳制作人's and 325大学习's not yet: HAIMAO and STUDY are off here
+      `${BADGES.filter((b) => !b.unlisted && !b.guide && !b.study).length} titles to earn`,
       `for ${DECLARATION_DAYS}&nbsp;days`,
       `up to ${RADAR_RADIUS_KM}&nbsp;km`,
       `after ${HELP_HOURS}&nbsp;hours`,
@@ -249,7 +249,7 @@ describe("/about/zh", () => {
     for (const said of [
       `${DECLARATION_RADIUS_KM}&nbsp;公里内的舟P都能收到`,
       `最多 ${MAX_CLONES} 只克隆体`,
-      `${BADGES.filter((b) => !b.unlisted && !b.guide).length} 个称号等你拿`,
+      `${BADGES.filter((b) => !b.unlisted && !b.guide && !b.study).length} 个称号等你拿`,
       `宣言挂 ${DECLARATION_DAYS}&nbsp;天`,
       `最远扫到 ${RADAR_RADIUS_KM}&nbsp;公里`,
       `${HELP_HOURS}&nbsp;小时后自己消失`,

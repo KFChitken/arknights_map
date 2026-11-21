@@ -4098,7 +4098,9 @@ export default function MapApp({
   }, []);
 
   useEffect(() => {
-    if (!idle || perlicaBusy || siTalking || !unseenBadges || newBadges.length || !me || !pageShown) return;
+    // not while 325大学习 is open, which a 称号 of its may come in, as it pops up only once that is closed: seen then,
+    // and not missed should the page be left meanwhile
+    if (!idle || studyOpen || perlicaBusy || siTalking || !unseenBadges || newBadges.length || !me || !pageShown) return;
     const userId = me.id;
     const unseen = me.badges.filter((b) => !b.seen);
     const ids = unseen.map((b) => b.id);
@@ -4119,7 +4121,7 @@ export default function MapApp({
     return () => {
       current = false;
     };
-  }, [idle, perlicaBusy, siTalking, unseenBadges, newBadges.length, me, pageShown, seeBadgesSurely]);
+  }, [idle, studyOpen, perlicaBusy, siTalking, unseenBadges, newBadges.length, me, pageShown, seeBadgesSurely]);
 
   // Shown on this device (in another tab, maybe), though the server still has them unseen (its 「看过了」 never
   // got through): seen on this page as well, and the server told again, quietly, once a visit for each, so that
@@ -5099,6 +5101,7 @@ export default function MapApp({
             // as 听歌's entry: not on /en
             listen={lang() === "zh" && Boolean(me.listen)}
             haimao={Boolean(me.haimao)}
+            study={Boolean(me.study)}
             onPassOnMap={switchPassOnMap}
             passwordForm={p.password}
             onConfirmByCode={(email, form, draft) => setPanel({ kind: "login", reason: CONFIRM_REASON[form], confirm: { email, form, draft } })}

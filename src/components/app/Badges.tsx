@@ -81,19 +81,24 @@ export function TheirBadges({ badges, worn }: { badges: ShownBadge[]; worn?: str
   );
 }
 
-/** 「我的称号 4/9 ›」 at the top of 我的资料; a timed badge is not counted, nor 香艳制作人's unless she shows (haimao). */
+/**
+ * 「我的称号 4/9 ›」 at the top of 我的资料; a timed badge is not counted, nor 香艳制作人's unless she shows (haimao), nor
+ * 325大学习's unless it is open to the player (study).
+ */
 export function MyBadgesRow({
   badges,
   worn,
   haimao = false,
+  study = false,
   onOpen,
 }: {
   badges: EarnedBadge[];
   worn: string | null;
   haimao?: boolean;
+  study?: boolean;
   onOpen: () => void;
 }) {
-  const list = wallBadges(new Set(badges.map((b) => b.id)), undefined, haimao).filter((b) => !b.days);
+  const list = wallBadges(new Set(badges.map((b) => b.id)), undefined, haimao, study).filter((b) => !b.days);
   const got = list.filter((b) => badges.some((e) => e.id === b.id)).length;
   const wearing = badges.find((b) => b.id === worn);
   return (
@@ -143,7 +148,7 @@ export function BadgeWall({
   onClose: () => void;
 }) {
   const earned = new Map(me.badges.map((b) => [b.id, b]));
-  const list = wallBadges(new Set(earned.keys()), undefined, Boolean(me.haimao));
+  const list = wallBadges(new Set(earned.keys()), undefined, Boolean(me.haimao), Boolean(me.study));
   const tally = list.filter((b) => !b.days);
   const got = tally.filter((b) => earned.has(b.id)).length;
   const worn = me.wornBadge ? earned.get(me.wornBadge) : undefined;

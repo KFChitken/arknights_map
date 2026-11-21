@@ -9,7 +9,7 @@ import { siteName } from "./rules";
  * never on the map.
  */
 
-export type BadgeSeries = "diplomacy" | "daily" | "memorial" | "bacchus" | "event" | "declare" | "response" | "guides";
+export type BadgeSeries = "diplomacy" | "daily" | "memorial" | "bacchus" | "event" | "declare" | "response" | "guides" | "study";
 
 export const SERIES: { id: BadgeSeries; name: string; code: string }[] = [
   {
@@ -68,6 +68,13 @@ export const SERIES: { id: BadgeSeries; name: string; code: string }[] = [
     },
     code: "GUIDES",
   },
+  {
+    id: "study",
+    get name() {
+      return T.lib.badges.series.study;
+    },
+    code: "STUDY",
+  },
 ];
 
 /**
@@ -76,7 +83,8 @@ export const SERIES: { id: BadgeSeries; name: string; code: string }[] = [
  * everyday sentences (not 祝我生日快乐) they ever sent; guideFriends how many guides are 触须之交. The third
  * round's: days they scanned the radar, a roach of theirs spent the night by 塔露拉干员's fire, and they touched a
  * player sneakily; 触须之交 they wished 生日快乐！, and who covered them with a quilt; main roach moves of
- * MOVING_CITY_KM or more; badges held besides 罗德岛正式干员; and how many of ELITE_SERIES they hold one of.
+ * MOVING_CITY_KM or more; badges held besides 罗德岛正式干员; and how many of ELITE_SERIES they hold one of. And
+ * 325大学习's site days studied (src/lib/study/rules.ts), which add up and need not be in a row.
  */
 export type BadgeCount =
   | "friends"
@@ -95,7 +103,8 @@ export type BadgeCount =
   | "quilters"
   | "farMoves"
   | "badgesOwned"
-  | "seriesCovered";
+  | "seriesCovered"
+  | "studyDays";
 
 /** 一呼百舟应: this many responses to one declaration */
 export const ECHO_REACTIONS = 10;
@@ -146,6 +155,13 @@ export type Badge = {
    * src/lib/server/env.ts), and for anyone who holds it
    */
   guide?: "haimao";
+  /**
+   * 325大学习's (src/lib/study/rules.ts): on the wall, and counted, only for a player who may study (STUDY,
+   * src/lib/server/env.ts), and for anyone who holds it
+   */
+  study?: true;
+  /** Unlisted, and not counted in badgeTotal either, until it is had: 325大学习's two hidden ones */
+  hidden?: true;
 };
 
 /** 千里传须: the two main roaches this far apart when two players become 触须之交 */
@@ -1392,6 +1408,172 @@ export const BADGES: Badge[] = [
     guide: "haimao",
     unlisted: true,
   },
+  // 325大学习's, by the site days studied (src/lib/study/rules.ts SEALS), which add up: each a seal stamped, 325 in
+  // the middle, its days on a tab at the top
+  {
+    id: "study7",
+    get name() {
+      return T.lib.badges.study7.name;
+    },
+    code: "STU-7",
+    series: "study",
+    get condition() {
+      return T.lib.badges.study7.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.study7.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.study7.quote;
+    },
+    pill: { background: "#fff4f0", color: "#b3302a", border: "1.5px solid #e8897f" },
+    goal: { count: "studyDays", n: 7 },
+    study: true,
+  },
+  {
+    id: "study14",
+    get name() {
+      return T.lib.badges.study14.name;
+    },
+    code: "STU-14",
+    series: "study",
+    get condition() {
+      return T.lib.badges.study14.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.study14.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.study14.quote;
+    },
+    pill: { background: "#fff4f0", color: "#b3302a", border: "1.5px solid #e8897f" },
+    goal: { count: "studyDays", n: 14 },
+    study: true,
+  },
+  {
+    id: "study30",
+    get name() {
+      return T.lib.badges.study30.name;
+    },
+    code: "STU-30",
+    series: "study",
+    get condition() {
+      return T.lib.badges.study30.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.study30.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.study30.quote;
+    },
+    pill: { background: "#fff4f0", color: "#b3302a", border: "1.5px solid #c8372d" },
+    goal: { count: "studyDays", n: 30 },
+    study: true,
+  },
+  {
+    id: "study90",
+    get name() {
+      return T.lib.badges.study90.name;
+    },
+    code: "STU-90",
+    series: "study",
+    get condition() {
+      return T.lib.badges.study90.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.study90.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.study90.quote;
+    },
+    pill: { background: "#fff4f0", color: "#b3302a", border: "1.5px solid #c8372d" },
+    goal: { count: "studyDays", n: 90 },
+    study: true,
+  },
+  {
+    id: "study180",
+    get name() {
+      return T.lib.badges.study180.name;
+    },
+    code: "STU-180",
+    series: "study",
+    get condition() {
+      return T.lib.badges.study180.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.study180.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.study180.quote;
+    },
+    pill: { background: "#c8372d", color: "#fff8ef", border: "1.5px solid #9e2a22" },
+    goal: { count: "studyDays", n: 180 },
+    study: true,
+  },
+  {
+    id: "study325",
+    get name() {
+      return T.lib.badges.study325.name;
+    },
+    code: "STU-325",
+    series: "study",
+    get condition() {
+      return T.lib.badges.study325.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.study325.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.study325.quote;
+    },
+    pill: { background: "linear-gradient(100deg, #c8372d 0%, #8f1f1a 100%)", color: "#ffe08a", border: "1.5px solid #f2b733" },
+    goal: { count: "studyDays", n: 325 },
+    study: true,
+  },
+  // 325大学习's two hidden ones, told by the page as a round ends (src/app/api/study/[op]/route.ts): 325 exactly, and
+  // a round ended in Beijing's 3:25 or 15:25
+  {
+    id: "fate325",
+    get name() {
+      return T.lib.badges.fate325.name;
+    },
+    code: "STU-FATE",
+    series: "study",
+    get condition() {
+      return T.lib.badges.fate325.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.fate325.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.fate325.quote;
+    },
+    pill: { background: "#fff8ef", color: "#c8372d", border: "1.5px solid #f2b733" },
+    study: true,
+    unlisted: true,
+    hidden: true,
+  },
+  {
+    id: "ontime325",
+    get name() {
+      return T.lib.badges.ontime325.name;
+    },
+    code: "STU-3:25",
+    series: "study",
+    get condition() {
+      return T.lib.badges.ontime325.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.ontime325.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.ontime325.quote;
+    },
+    pill: { background: "#1f2a44", color: "#ffd9cf", border: "1.5px solid #c8372d" },
+    study: true,
+    unlisted: true,
+    hidden: true,
+  },
 ];
 
 export function badgeById(id: string) {
@@ -1428,25 +1610,35 @@ export const quoteOf = (b: Badge, serial?: number) => b.quote.replace("{serial}"
 export const lockedText = (b: Badge, counts: Record<BadgeCount, number>) =>
   b.lockedHint.replace("{n}", String(b.goal ? Math.min(counts[b.goal.count], b.goal.n) : 0));
 
+/** Whether a badge is for this player at all: 香艳制作人's where she shows (haimao), 325大学习's to one who may study (study) */
+const forPlayer = (b: Badge, haimao: boolean, study: boolean) => (haimao || b.guide !== "haimao") && (study || !b.study);
+
 /**
  * The badges the wall lists: every lasting one, of the event badges only those
  * earned or on offer now, a timed one only while it is held, and an unlisted one
  * only once had. Past events nobody earned stay out of sight, and 香艳制作人's
- * where she does not show (haimao: she shows to this player).
+ * where she does not show (haimao: she shows to this player), and 325大学习's to
+ * a player who may not study (study: they may).
  */
-export function wallBadges(earned: Set<string>, now = Date.now(), haimao = false) {
+export function wallBadges(earned: Set<string>, now = Date.now(), haimao = false, study = false) {
   const onNow = new Set(activeEvents(now).flatMap((e) => (e.badge ? [e.badge] : [])));
   return BADGES.filter(
-    (b) => earned.has(b.id) || ((haimao || b.guide !== "haimao") && (b.series === "event" ? onNow.has(b.id) : !b.days && !b.unlisted)),
+    (b) => earned.has(b.id) || (forPlayer(b, haimao, study) && (b.series === "event" ? onNow.has(b.id) : !b.days && !b.unlisted)),
   );
 }
 
-/** How many badges there are to earn, as the intro page counts them: not the thanks for sponsoring, nor hers where she does not show */
-export const earnableCount = (haimao: boolean) => BADGES.filter((b) => !b.unlisted && (haimao || b.guide !== "haimao")).length;
+/**
+ * How many badges there are to earn, as the intro page counts them: not the thanks for sponsoring nor the hidden ones,
+ * nor hers where she does not show, nor 325大学习's where no one may study
+ */
+export const earnableCount = (haimao: boolean, study = false) => BADGES.filter((b) => !b.unlisted && forPlayer(b, haimao, study)).length;
 
-/** How many badges there are, as 我的资料 and 我的记录 count them: 香艳制作人's only for a player she shows to (haimao), or who holds it */
-export const badgeTotal = (earned: { id: string }[], haimao: boolean) =>
-  BADGES.filter((b) => haimao || b.guide !== "haimao" || earned.some((e) => e.id === b.id)).length;
+/**
+ * How many badges there are, as 我的资料 and 我的记录 count them: 香艳制作人's only for a player she shows to (haimao),
+ * 325大学习's only for one who may study (study), and a hidden one only once had; any held, whatever they are
+ */
+export const badgeTotal = (earned: { id: string }[], haimao: boolean, study = false) =>
+  BADGES.filter((b) => earned.some((e) => e.id === b.id) || (forPlayer(b, haimao, study) && !b.hidden)).length;
 
 /**
  * Counts a player is nudged about: 触须之交, responders, and days (of declaring, responding, the radar, nights by

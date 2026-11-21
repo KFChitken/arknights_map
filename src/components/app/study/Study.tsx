@@ -6,12 +6,26 @@ import { isCourse, otherCourses, subjectOf, type CourseId } from "@/lib/study/co
 import { drawCourse } from "@/lib/study/draw";
 import { guestDone, guestGiveUp, guestToday, type GuestToday } from "@/lib/study/guest";
 import type { PassesDot } from "@/lib/passes";
-import { factIndex, GIVE_UP_AFTER, newSeed, nextSeal, roundTells, SEALS, type StudyMe, type StudySaid, type StudyToday } from "@/lib/study/rules";
+import { badgeById } from "@/lib/badges";
+import {
+  factIndex,
+  GIVE_UP_AFTER,
+  nearOnTime,
+  newSeed,
+  nextSeal,
+  roundTells,
+  sealBadge,
+  SEALS,
+  type StudyMe,
+  type StudySaid,
+  type StudyToday,
+} from "@/lib/study/rules";
 import type { Sheet as Paper325, Show } from "@/lib/study/board";
 import { NotToday, StaleToday, studyApi } from "@/lib/studyClient";
 import { BoardPaused, writingApi } from "@/lib/writingClient";
 import { WorldError } from "@/lib/world/types";
 import RoachIcon from "../../RoachIcon";
+import { BadgeImg } from "../Badges";
 import Sheet from "../Sheet";
 import Board, { PutUp, type PaperUp } from "./Board";
 import { loadGame, type Game, type Look, type Round } from "./games";
@@ -261,6 +275,18 @@ export default function Study({
     if (roundTells(r, id === today.course && !today.done)) record(id, today.day, r.won);
     // 徒手写 passed: the server marks the paper again, and knows the player passed (to rate others'); a visitor's stays here
     if (r.paper && r.won && signedIn) sendPaper(key, r.paper);
+    if (signedIn) tellHidden(r);
+  };
+
+  /**
+   * The two hidden 称号, for a round of any course, a step on the way too: 325 exactly (命运的 325), and ended near
+   * 3:25 or 15:25 by this device's clock (准点 325), which the server's clock decides. Nothing is said of it here: a
+   * 称号 given pops up once this is closed, as any does. Lost on the way, it is just not given.
+   */
+  const tellHidden = (r: Round) => {
+    const quiet = () => {};
+    if (r.fate) studyApi.fate().catch(quiet);
+    if (nearOnTime()) studyApi.onTime().catch(quiet);
   };
 
   /** 徒手写's paper passed sent to be marked again, and what the server says of it: their own up already, how many more may go up today */
@@ -592,18 +618,21 @@ type Today = { day: string; course: string; done: boolean; days: number | null; 
 /** A visitor's day, as this page shows it: no days counted, courses dealt at random rather than picked, nothing said */
 const guestsOwn = (t: GuestToday): Today => ({ ...t, days: null, pick: false, announced: false });
 
-/** The days studied, the next seal and the six of them (got: filled; to come: dashed) */
+/** A seal's 称号's name: 325 旁听生 and so on */
+const sealName = (n: number) => badgeById(sealBadge(n))?.name ?? "";
+
+/** The days studied, the 称号 next and the six of them, each its seal's art (got: in colour; to come: grey) */
 function Days({ days }: { days: number }) {
   const next = nextSeal(days);
   return (
     <div className="st-days">
       <b>{fmt(T.study.days, { n: days })}</b>
-      {next && <small>{fmt(T.study.nextSeal, { n: next.left, k: next.k })}</small>}
+      {next && <small>{fmt(T.study.nextSeal, { n: next.left, name: sealName(SEALS[next.k - 1]) })}</small>}
       <ol className="st-seals" aria-label={T.study.seals}>
         {SEALS.map((n) => (
           <li key={n} className={days >= n ? "got" : undefined}>
-            <span aria-hidden="true">{n}</span>
-            <span className="st-sr">{fmt(days >= n ? T.study.sealGot : T.study.seal, { n })}</span>
+            <BadgeImg id={sealBadge(n)} size={30} alt="" />
+            <span className="st-sr">{fmt(days >= n ? T.study.sealGot : T.study.seal, { n, name: sealName(n) })}</span>
           </li>
         ))}
       </ol>

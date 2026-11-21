@@ -274,7 +274,7 @@ export default function Overview({
       [
         [
           r.badges,
-          fmt(u.of, { n: me.badges.length, all: badgeTotal(me.badges, Boolean(me.haimao)) }),
+          fmt(u.of, { n: me.badges.length, all: badgeTotal(me.badges, Boolean(me.haimao), Boolean(me.study)) }),
           <button key="b" onClick={onOpenBadges}>
             {o.links.badges}
           </button>,

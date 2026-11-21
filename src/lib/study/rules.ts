@@ -1,3 +1,4 @@
+import { beijingDate, beijingMidnight } from "../beijing";
 import type { PassesDot } from "../passes";
 import { siteDayStart } from "../siteDay";
 
@@ -10,8 +11,45 @@ import { siteDayStart } from "../siteDay";
 
 const DAY = 86_400_000;
 
-/** The days studied that each bring a seal, in order */
+/** The days studied that each bring a seal, in order: a 称号 each (sealBadge), given as the day is counted */
 export const SEALS = [7, 14, 30, 90, 180, 325] as const;
+
+/** The 称号 a seal is (src/lib/badges.ts), whose art is /badges/<id>(-mini).svg: study7, study14 and so on */
+export const sealBadge = (n: number) => `study${n}`;
+
+/**
+ * The two hidden 称号, which the page tells the server of as a round ends (src/app/api/study/[op]/route.ts), any
+ * course's, picked or dealt as well: 命运的 325, a round passed at 325 exactly (the stopwatch stopped at 3.25, 叠罗汉's
+ * 325 roaches, 控分肉鸽's 325); 准点 325, a round ended within 3:25 or 15:25 Beijing time
+ */
+export const FATE_BADGE = "fate325";
+export const ON_TIME_BADGE = "ontime325";
+
+/** 准点 325's minutes: 3:25 and 15:25, Beijing time, which the site goes by everywhere */
+const ON_TIME_AT = [3 * 60 + 25, 15 * 60 + 25].map((m) => m * 60_000);
+/** How long after its minute is over a round ended in it may still reach the server */
+export const ON_TIME_GRACE_MS = 10_000;
+
+/** How far into its Beijing day a moment is */
+const intoBeijingDay = (now: number) => now - beijingMidnight(beijingDate(now));
+
+/**
+ * Whether a round that just reached the server ended within 准点 325's minute, by the server's clock (a device's may be
+ * set to anything), with ON_TIME_GRACE_MS for the way there
+ */
+export function onTimeNow(now = Date.now()) {
+  const t = intoBeijingDay(now);
+  return ON_TIME_AT.some((at) => t >= at && t < at + 60_000 + ON_TIME_GRACE_MS);
+}
+
+/**
+ * Whether a page should tell the server a round just ended on time: by this device's clock, from a minute before
+ * 准点 325's minute to a minute after it, as a phone's clock may be a little off. The server's alone decides (onTimeNow).
+ */
+export function nearOnTime(now = Date.now()) {
+  const t = intoBeijingDay(now);
+  return ON_TIME_AT.some((at) => t >= at - 60_000 && t < at + 2 * 60_000);
+}
 
 /** After this many rounds of the day's course lost, it may be given up, and the day counts as studied all the same */
 export const GIVE_UP_AFTER = 5;

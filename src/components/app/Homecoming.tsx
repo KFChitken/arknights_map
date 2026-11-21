@@ -36,6 +36,8 @@ export const NEXT: Record<BadgeCount, (more: number, name: string) => string> = 
   farMoves: (n, name) => fmt(T.homecoming.next.farMoves, { n, name }),
   badgesOwned: (n, name) => fmt(T.homecoming.next.badgesOwned, { n, name }),
   seriesCovered: (n, name) => fmt(T.homecoming.next.seriesCovered, { n, name }),
+  // never picked either: 325大学习's own page says how many days are left to its next 称号
+  studyDays: (n, name) => fmt(T.homecoming.next.studyDays, { n, name }),
 };
 
 /**

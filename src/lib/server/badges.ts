@@ -375,6 +375,11 @@ export async function drank(userId: string, total: number) {
   return award(userId, reached("drinks", total));
 }
 
+/** 325大学习's 称号 by the site days studied, days so far (src/lib/server/study.ts): given as a day is counted */
+export async function studied(userId: string, days: number) {
+  return award(userId, reached("studyDays", days));
+}
+
 /** Someone reacted to a player's declaration. */
 export async function reactedTo(senderId: string) {
   await award(senderId, reached("responders", await respondersOf(senderId)));
@@ -436,6 +441,7 @@ export async function catchUpBadges() {
     birthdayWishes: sql`cardinality(${users.birthdayWished})`,
     quilters: sql`cardinality(${users.quiltedBy})`,
     farMoves: sql`${users.farMoves}`,
+    studyDays: sql`${users.studyDays}`,
   };
   for (const b of BADGES) {
     // the two that go by the badges held come last, below

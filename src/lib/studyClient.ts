@@ -51,4 +51,8 @@ export const studyApi = {
   giveUp: (course: string) => call<StudyDone>("giveup", { course }),
   /** 已完成今日的325大学习 said, once today's course is done */
   announce: () => call<StudyAnnounced>("announce"),
+  /** A round of any course passed at 325 exactly: 命运的 325 */
+  fate: () => call<{ got: boolean }>("fate"),
+  /** A round of any course ended near 3:25 or 15:25 by this device's clock: 准点 325, if the server's says so too */
+  onTime: () => call<{ got: boolean }>("ontime"),
 };

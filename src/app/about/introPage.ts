@@ -6,7 +6,7 @@ import { earnableCount } from "@/lib/badges";
 import { GRAY_CSS } from "@/lib/grayMode";
 import { HELP_HOURS } from "@/lib/help";
 import { DECLARATION_DAYS, DECLARATION_RADIUS_KM, KEEP_ACTIVITY_DAYS, MAX_CLONES, MIN_SIGNUP_AGE, RADAR_RADIUS_KM } from "@/lib/rules";
-import { haimaoMode } from "@/lib/server/env";
+import { haimaoMode, studyMode } from "@/lib/server/env";
 import { playersOnMapNow } from "@/lib/server/roachFeed";
 import { grayUntil } from "@/lib/server/siteSettings";
 import { INTRO_TEMPLATE } from "./introTemplate";
@@ -55,8 +55,9 @@ export function introFills(lang: Lang, english: boolean, gray: boolean, name = s
     declDays: String(DECLARATION_DAYS),
     radarKm: String(RADAR_RADIUS_KM),
     helpHours: String(HELP_HOURS),
-    // the thanks for sponsoring are left out: they are not earned in play; and 香艳制作人's until she is out for everyone
-    badgeCount: String(earnableCount(haimaoMode() === "on")),
+    // the thanks for sponsoring are left out: they are not earned in play, nor shown till had, as 325大学习's hidden two
+    // are not; and 香艳制作人's until she is out for everyone, and 325大学习's until it is open to everyone
+    badgeCount: String(earnableCount(haimaoMode() === "on", studyMode() === "on")),
     keepDays: String(KEEP_ACTIVITY_DAYS),
     players: PLAYERS_AT,
   };

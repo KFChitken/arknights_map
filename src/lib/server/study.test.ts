@@ -1,10 +1,11 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { siteDay, siteDayStart } from "../siteDay";
 import { loadMods } from "./admins";
+import { catchUpBadges } from "./badges";
 import { db } from "./db";
-import { admins, users } from "./schema";
-import { studyDone, studyGiveUp, studyMe, studyToday } from "./study";
+import { admins, userBadges, users } from "./schema";
+import { studyDone, studyFate, studyGiveUp, studyMe, studyOnTime, studyToday } from "./study";
 
 vi.mock("./env", async (original) => ({ ...(await original<typeof import("./env")>()), ADMIN_EMAILS: ["owner@example.com"] }));
 
@@ -27,6 +28,9 @@ async function account(email = "player@example.com") {
 /** The player as the server's study asks for them */
 const who = (id: string, email = "player@example.com") => ({ id, email });
 const row = async (id: string) => (await db.select().from(users).where(eq(users.id, id)))[0];
+/** The 称号 a player holds, by id */
+const held = async (id: string) =>
+  (await db.select({ badge: userBadges.badge }).from(userBadges).where(eq(userBadges.userId, id))).map((b) => b.badge).sort();
 
 beforeEach(async () => {
   await db.execute(sql`truncate ${users} cascade`);
@@ -169,5 +173,68 @@ describe("325大学习 on the server", () => {
     vi.stubEnv("STUDY", "on");
     expect((await studyToday(who(owner, "owner@example.com"), now)).pick).toBe(true);
     expect((await studyToday(who(someone, "someone@example.com"), now)).pick).toBe(false);
+  });
+});
+
+describe("325大学习's 称号", () => {
+  it("gives those the days reach as a day is counted, by a round won or by giving up, never by a round lost", async () => {
+    const id = await account();
+    const day1 = at("2026-11-21");
+    await db.update(users).set({ studyDays: 6, studiedOn: "2026-11-20" }).where(eq(users.id, id));
+    const { course } = await studyToday(who(id), day1);
+    await studyDone(who(id), course, false, day1);
+    expect(await held(id)).toEqual([]);
+    expect(await studyDone(who(id), course, true, day1)).toEqual({ done: true, days: 7, fails: 1, skipped: false });
+    expect(await held(id)).toEqual(["study7"]);
+    // another round won that day counts nothing more, and gives nothing more
+    await studyDone(who(id), course, true, day1 + HOUR);
+    expect(await held(id)).toEqual(["study7"]);
+
+    // the fourteenth day given up after five rounds lost
+    await db.update(users).set({ studyDays: 13 }).where(eq(users.id, id));
+    const day2 = day1 + DAY;
+    const t2 = await studyToday(who(id), day2);
+    for (let i = 0; i < 5; i++) await studyDone(who(id), t2.course, false, day2);
+    expect(await held(id)).toEqual(["study7"]);
+    expect(await studyGiveUp(who(id), t2.course, day2)).toEqual({ done: true, days: 14, fails: 5, skipped: true });
+    expect(await held(id)).toEqual(["study14", "study7"]);
+  });
+
+  it("gives at every start those the days studied already reach, keeping what is held as it was", async () => {
+    const far = await account("far@example.com");
+    const near = await account("near@example.com");
+    const none = await account("none@example.com");
+    await db.update(users).set({ studyDays: 30 }).where(eq(users.id, far));
+    await db.update(users).set({ studyDays: 6 }).where(eq(users.id, near));
+    const earnedAt = new Date("2026-11-01T00:00:00Z");
+    await db.insert(userBadges).values({ userId: far, badge: "study7", earnedAt });
+    await catchUpBadges();
+    await catchUpBadges();
+    expect(await held(far)).toEqual(["study14", "study30", "study7"]);
+    expect(await held(near)).toEqual([]);
+    expect(await held(none)).toEqual([]);
+    const [kept] = await db.select().from(userBadges).where(and(eq(userBadges.userId, far), eq(userBadges.badge, "study7")));
+    expect(kept.earnedAt).toEqual(earnedAt);
+    // the days are left as they were
+    expect(await row(far)).toMatchObject({ studyDays: 30 });
+  });
+
+  it("gives 命运的 325 as the page tells of a round at 325 exactly, once", async () => {
+    const id = await account();
+    expect(await studyFate(who(id))).toEqual({ got: true });
+    expect(await studyFate(who(id))).toEqual({ got: false });
+    expect(await held(id)).toEqual(["fate325"]);
+  });
+
+  it("gives 准点 325 only while the server's clock says it is 3:25 or 15:25 Beijing time, whatever the page's says", async () => {
+    const id = await account();
+    const bj = (hms: string) => Date.parse(`2026-11-21T${hms}+08:00`);
+    expect(await studyOnTime(who(id), bj("03:24:50"))).toEqual({ got: false });
+    expect(await studyOnTime(who(id), bj("03:27:00"))).toEqual({ got: false });
+    expect(await studyOnTime(who(id), bj("12:00:00"))).toEqual({ got: false });
+    expect(await held(id)).toEqual([]);
+    expect(await studyOnTime(who(id), bj("15:25:40"))).toEqual({ got: true });
+    expect(await studyOnTime(who(id), bj("03:25:10"))).toEqual({ got: false });
+    expect(await held(id)).toEqual(["ontime325"]);
   });
 });

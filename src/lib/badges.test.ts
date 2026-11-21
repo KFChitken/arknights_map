@@ -1,7 +1,25 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { BADGES, badgeById, badgesOwned, daysLeft, heldUntil, lockedText, nextBadge, quoteOf, serialText, seriesCovered, stillHeld, wallBadges } from "./badges";
+import {
+  BADGES,
+  badgeById,
+  badgesOwned,
+  badgeTotal,
+  daysLeft,
+  earnableCount,
+  ELITE_SERIES,
+  heldUntil,
+  lockedText,
+  nextBadge,
+  quoteOf,
+  serialText,
+  SERIES,
+  seriesCovered,
+  stillHeld,
+  wallBadges,
+} from "./badges";
 import { siteName } from "./rules";
+import { FATE_BADGE, ON_TIME_BADGE, sealBadge, SEALS } from "./study/rules";
 
 const none = {
   friends: 0,
@@ -21,6 +39,7 @@ const none = {
   farMoves: 0,
   badgesOwned: 0,
   seriesCovered: 0,
+  studyDays: 0,
 };
 
 describe("badges", () => {
@@ -114,5 +133,58 @@ describe("badges", () => {
     expect(lockedText(badgeById("regular")!, { ...none, badgesOwned: 3 })).toBe("3 / 5 枚");
     expect(lockedText(badgeById("elite")!, { ...none, seriesCovered: 4 })).toBe("4 / 5 个系列");
     expect(lockedText(badgeById("stormchaser")!, { ...none, radarDays: 12 })).toBe("10 / 10 天");
+  });
+
+  it("has 325大学习's eight last, a 称号 for each seal's days and two hidden, as drafted", () => {
+    expect(SERIES.at(-1)).toMatchObject({ id: "study", name: "325大学习系列", code: "STUDY" });
+    const study = BADGES.filter((b) => b.series === "study");
+    expect(BADGES.slice(-8)).toEqual(study);
+    expect(study.map((b) => [b.id, b.name, b.code])).toEqual([
+      ["study7", "325 旁听生", "STU-7"],
+      ["study14", "325 插班生", "STU-14"],
+      ["study30", "325 课代表", "STU-30"],
+      ["study90", "325 学习委员", "STU-90"],
+      ["study180", "325 教研组长", "STU-180"],
+      ["study325", "325 名誉教授", "STU-325"],
+      [FATE_BADGE, "命运的 325", "STU-FATE"],
+      [ON_TIME_BADGE, "准点 325", "STU-3:25"],
+    ]);
+    // one by the days for each seal on 325大学习's page, the same days
+    const byDays = study.filter((b) => b.goal);
+    expect(byDays.map((b) => b.id)).toEqual(SEALS.map(sealBadge));
+    expect(byDays.map((b) => b.goal)).toEqual(SEALS.map((n) => ({ count: "studyDays", n })));
+    expect(lockedText(badgeById("study7")!, { ...none, studyDays: 3 })).toBe("3 / 7 天");
+    expect(lockedText(badgeById("study325")!, { ...none, studyDays: 400 })).toBe("325 / 325 天");
+    expect(badgeById("study30")!.condition).toBe("325大学习累计学满 30 天（每天上完抽到的那门课算一天，不用连着）");
+    expect(badgeById("study325")!.quote).toBe("第 325 天。这门课，你学满了。");
+    expect(badgeById(ON_TIME_BADGE)!.condition).toBe("北京时间 3:25 或 15:25 那一分钟里上完一局，哪门课都行");
+    // the hidden two go by no count, and are off the wall until had
+    for (const id of [FATE_BADGE, ON_TIME_BADGE]) {
+      expect(badgeById(id)!.goal).toBeUndefined();
+      expect(badgeById(id)).toMatchObject({ unlisted: true, hidden: true, study: true });
+    }
+    // neither 精英干员 nor any nudge asks for studying: its own page says the days left
+    expect(ELITE_SERIES).not.toContain("study");
+    const lots = { ...none, friends: 999, responders: 999, declareDays: 999, reactDays: 999, radarDays: 999, fireNights: 999, sneakDays: 999 };
+    expect(nextBadge([], { ...lots, drinks: 999, studyDays: 6 })).toBeNull();
+  });
+
+  it("lists 325大学习's only for a player who may study, the hidden two only once had, and counts them likewise", () => {
+    const after = Date.parse("2026-12-01T12:00+08:00");
+    const study = (list: { id: string; series: string }[]) => list.filter((b) => b.series === "study").map((b) => b.id);
+    expect(study(wallBadges(new Set(), after))).toEqual([]);
+    expect(study(wallBadges(new Set(), after, false, true))).toEqual(SEALS.map(sealBadge));
+    // one held shows whatever STUDY is, as any held does
+    expect(study(wallBadges(new Set(["study7"]), after))).toEqual(["study7"]);
+    expect(study(wallBadges(new Set([FATE_BADGE]), after, false, true))).toEqual([...SEALS.map(sealBadge), FATE_BADGE]);
+    expect(study(wallBadges(new Set([ON_TIME_BADGE, FATE_BADGE]), after, false, true))).toEqual([...SEALS.map(sealBadge), FATE_BADGE, ON_TIME_BADGE]);
+    // 我的资料's and 我的记录's 「x / y」: six more for one who may study, a hidden one only once had
+    const base = badgeTotal([], false);
+    expect(badgeTotal([], false, true)).toBe(base + 6);
+    expect(badgeTotal([{ id: FATE_BADGE }], false, true)).toBe(base + 7);
+    expect(badgeTotal([{ id: "study7" }], false)).toBe(base + 1);
+    expect(badgeTotal([], true, true)).toBe(badgeTotal([], true) + 6);
+    // the intro page's: the six only once anyone may study, the hidden two never
+    expect(earnableCount(false, true)).toBe(earnableCount(false) + 6);
   });
 });

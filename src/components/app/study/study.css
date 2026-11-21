@@ -50,12 +50,11 @@
 .study .st-days { display: flex; flex-direction: column; gap: 2px; margin: 16px 2px 0; }
 .study .st-days b { font-size: 15px; }
 .study .st-days small { color: var(--muted); font-size: 12.5px; }
+/* the six 称号 by days, each its seal (the badge's mini art, its days on it): got in colour, to come grey */
 .study .st-seals { display: flex; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
-.study .st-seals li {
-  display: grid; place-items: center; flex: 1; max-width: 54px; height: 30px; border: 1.5px dashed #c3c8cf; border-radius: 7px;
-  color: var(--muted); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
-}
-.study .st-seals li.got { border-style: solid; border-color: var(--st-yellow); background: var(--st-tint); color: #1b1d22; font-weight: 800; }
+.study .st-seals li { display: grid; place-items: center; flex: 1; max-width: 54px; height: 38px; }
+.study .st-seals img { display: block; filter: grayscale(1); opacity: 0.38; }
+.study .st-seals li.got img { filter: none; opacity: 1; }
 .study .st-guest { margin: 14px 2px 0; color: var(--muted); font-size: 13px; }
 
 .study .st-more { margin: 18px 2px 0; }

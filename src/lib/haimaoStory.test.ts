@@ -79,9 +79,10 @@ describe("被海猫 all 了", () => {
     expect(wallBadges(new Set(), undefined, true).map((b) => b.id)).toContain(HAIMAO_BADGE);
     expect(wallBadges(new Set([HAIMAO_BADGE])).map((b) => b.id)).toContain(HAIMAO_BADGE);
     expect(earnableCount(true)).toBe(earnableCount(false) + 1);
-    // hers are two, this and the title her wheel gives (all 门信徒)
-    expect(badgeTotal([], false)).toBe(BADGES.length - 2);
-    expect(badgeTotal([], true)).toBe(BADGES.length);
-    expect(badgeTotal([{ id: HAIMAO_BADGE }], false)).toBe(BADGES.length - 1);
+    // hers are two, this and the title her wheel gives (all 门信徒); 325大学习's are left out here (badges.test.ts)
+    const all = BADGES.filter((b) => !b.study).length;
+    expect(badgeTotal([], false)).toBe(all - 2);
+    expect(badgeTotal([], true)).toBe(all);
+    expect(badgeTotal([{ id: HAIMAO_BADGE }], false)).toBe(all - 1);
   });
 });

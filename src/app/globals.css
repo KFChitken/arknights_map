@@ -1561,6 +1561,7 @@ button.link { border: 0; padding: 0; background: none; color: var(--muted); font
 .series-head .series-count { letter-spacing: 0.16em; color: var(--muted); }
 .diamond { width: 9px; height: 9px; border: 1.5px solid var(--ink); background: var(--accent); transform: rotate(45deg); }
 .series-head.series-event .diamond { background: #ff8a3d; }
+.series-head.series-study .diamond { background: #c8372d; }
 
 /* 怎么拿: a badge not earned yet, tapped on 我的称号, over the sheet */
 .badge-peek {

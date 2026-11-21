@@ -121,6 +121,8 @@ function roundOf(cs: number, v: StopVerdict, stage: StopStage, limit: boolean): 
     won: outcome !== "lost",
     // today's shown round passed: hidden next, which alone counts
     ...(outcome === "step" && { step: true }),
+    // stopped at 3.25 exactly, a step on the way or not: 命运的 325
+    ...(v === "exact" && { fate: true }),
     result: fmt(words.result, { t }) + (stage === "hidden" ? words.hidden : ""),
     verdict: limit ? words.limit : outcome === "lost" ? fmt(words.miss, { t }) : outcome === "step" ? said + words.hideNext : said,
     again: outcome === "lost" ? undefined : { label: words.hide, mode: "hidden" },

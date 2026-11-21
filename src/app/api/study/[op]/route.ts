@@ -6,7 +6,7 @@ import { studyMode } from "@/lib/server/env";
 import { HttpError, readJson, route } from "@/lib/server/http";
 import { allow } from "@/lib/server/rateLimit";
 import type { UserRow } from "@/lib/server/schema";
-import { studyDone, studyOpen, studyToday } from "@/lib/server/study";
+import { studyDone, studyFate, studyOnTime, studyOpen, studyToday } from "@/lib/server/study";
 import { studyAnnounce, studyGiveUpSaying } from "@/lib/server/studySay";
 
 /**
@@ -20,6 +20,9 @@ import { studyAnnounce, studyGiveUpSaying } from "@/lib/server/studySay";
  *   POST giveup {course}      the day's course given up after five rounds of it lost: a site day studied all the same,
  *                             and 苦也！ said from the main roach (src/lib/server/studySay.ts), if it can be
  *   POST announce             已完成今日的325大学习 said, once today's is done, once a site day
+ *   POST fate                 a round of any course passed at 325 exactly: 命运的 325, a hidden 称号
+ *   POST ontime               a round of any course ended near 3:25 or 15:25 by the page's clock: 准点 325, a hidden
+ *                             称号, if the server's clock says it is that minute still
  * While STUDY keeps it from this player (src/lib/server/env.ts), every request is answered 404, as if nothing were here.
  * All wait, like the map's world, while the admin asks the player to say again they are 18 or older, or an updated
  * privacy policy is not agreed yet.
@@ -30,6 +33,8 @@ const OPS = {
   done: { perMinute: 20 },
   giveup: { perMinute: 10 },
   announce: { perMinute: 10 },
+  fate: { perMinute: 10 },
+  ontime: { perMinute: 10 },
 } as const satisfies Record<string, { perMinute: number }>;
 type Op = keyof typeof OPS;
 const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
@@ -64,6 +69,8 @@ export const POST = route(async (req: NextRequest, { params }: Ctx) => {
   const { user, op } = await playerFor("POST", (await params).op);
   if (op === "today") return answer(await studyToday(user));
   if (op === "announce") return answer(await studyAnnounce(user));
+  if (op === "fate") return answer(await studyFate(user));
+  if (op === "ontime") return answer(await studyOnTime(user));
   const body = await readJson(req);
   if (op === "giveup") return answer(await studyGiveUpSaying(user, body.course));
   return answer(await studyDone(user, body.course, body.won));

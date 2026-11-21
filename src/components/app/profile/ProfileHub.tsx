@@ -124,6 +124,7 @@ function HomePage({
   const t = T.profile2;
   const [seg, setSeg] = useState<"stranger" | "bold" | "friend">("stranger");
   const worn = me.badges.find((b) => b.id === me.wornBadge);
+  const badgesAll = badgeTotal(me.badges, Boolean(me.haimao), Boolean(me.study));
   const pass = me.passes?.worn ?? null;
   return (
     <Sheet title={t.title} onClose={onClose}>
@@ -158,8 +159,8 @@ function HomePage({
           title={t.rows.badges}
           hint={
             worn
-              ? fmt(t.rows.badgesWorn, { n: me.badges.length, all: badgeTotal(me.badges, Boolean(me.haimao)), name: badgeById(worn.id)?.name ?? "" })
-              : fmt(t.rows.badgesHint, { n: me.badges.length, all: badgeTotal(me.badges, Boolean(me.haimao)) })
+              ? fmt(t.rows.badgesWorn, { n: me.badges.length, all: badgesAll, name: badgeById(worn.id)?.name ?? "" })
+              : fmt(t.rows.badgesHint, { n: me.badges.length, all: badgesAll })
           }
           side={worn ? <BadgePill badge={worn} /> : undefined}
           onClick={() => onOpenBadges(edit)}

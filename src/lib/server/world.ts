@@ -483,6 +483,7 @@ export async function me(userId: string, offsetMin?: unknown): Promise<Me | null
       farMoves: u.farMoves,
       badgesOwned: badgesOwned(badges),
       seriesCovered: seriesCovered(badges),
+      studyDays: u.studyDays,
     },
     drunkUntil: u.drunkUntil && u.drunkUntil.getTime() > Date.now() ? u.drunkUntil.getTime() : null,
     onlyMains: u.onlyMains,

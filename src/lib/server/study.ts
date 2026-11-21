@@ -5,8 +5,20 @@ import { siteDay, siteDayStart } from "../siteDay";
 import { coursesFor, isCourse } from "../study/courses";
 import { drawCourse } from "../study/draw";
 import type { PassesDot } from "../passes";
-import { GIVE_UP_AFTER, NOT_TODAY, NOT_YET, type StudyDone, type StudyMe, type StudySaid, type StudyToday } from "../study/rules";
+import {
+  FATE_BADGE,
+  GIVE_UP_AFTER,
+  NOT_TODAY,
+  NOT_YET,
+  ON_TIME_BADGE,
+  onTimeNow,
+  type StudyDone,
+  type StudyMe,
+  type StudySaid,
+  type StudyToday,
+} from "../study/rules";
 import { isModHere, isOwnerEmail } from "./admins";
+import { award, studied } from "./badges";
 import { db } from "./db";
 import { studyMode } from "./env";
 import { HttpError } from "./http";
@@ -16,8 +28,10 @@ import { declarations, users, type UserRow } from "./schema";
  * 325大学习 (src/lib/study): each player's course of the site day (src/lib/siteDay.ts, from 04:00 Beijing time), drawn
  * the first time they open it that day (today); the rounds of it lost (done, won: false), and the days studied, one a
  * site day at most, counted by a round of that day's course won (done), or by giving it up once GIVE_UP_AFTER rounds
- * of it are lost (giveUp). Nothing else is kept: how a round went stays on the player's page, and no one else learns
- * whether they studied, unless they say so in one of its two declarations (studySay.ts). Switched by STUDY (env.ts).
+ * of it are lost (giveUp). Each day counted gives the 称号 its days reach (src/lib/study/rules.ts SEALS), and the page
+ * tells of a round at 325 exactly (fate) or ended at 3:25 (onTime), for the two hidden ones. Nothing else is kept: how a
+ * round went stays on the player's page, and no one else learns whether they studied, unless they say so in one of
+ * its two declarations (studySay.ts), or wear its 称号. Switched by STUDY (env.ts).
  */
 
 /** Whether this player may study: everyone (on), the 站长 and the admins (admins), or nobody (off) */
@@ -126,9 +140,10 @@ const doneOf = (u: { days: number; fails: number; studiedOn: string | null; skip
 });
 
 /**
- * A round of the day's course played. Won: a site day studied, the first time today (another round adds nothing). Lost:
- * one more round of it lost, until today is counted. A page that does not say (one from before rounds were lost) won.
- * Any other course, or yesterday's course after 04:00, is refused (409) with today's, which the page then shows.
+ * A round of the day's course played. Won: a site day studied, the first time today (another round adds nothing), and
+ * the 称号 the days reach, any not had yet. Lost: one more round of it lost, until today is counted. A page that does
+ * not say (one from before rounds were lost) won. Any other course, or yesterday's course after 04:00, is refused (409)
+ * with today's, which the page then shows.
  */
 export async function studyDone(user: Pick<UserRow, "id" | "email">, course: unknown, won: unknown = true, now = Date.now()): Promise<StudyDone> {
   if (!isCourse(course)) throw new HttpError(400, T.server.study.badCourse);
@@ -140,15 +155,16 @@ export async function studyDone(user: Pick<UserRow, "id" | "email">, course: unk
     .set(set)
     .where(and(eq(users.id, user.id), todays(course, day)))
     .returning(DONE_COLUMNS);
-  if (u) return doneOf(u, day);
-  throw new HttpError(409, T.server.study.notToday, NOT_TODAY, { today: await studyToday(user, now) });
+  if (!u) throw new HttpError(409, T.server.study.notToday, NOT_TODAY, { today: await studyToday(user, now) });
+  if (won !== false) await studied(user.id, u.days);
+  return doneOf(u, day);
 }
 
 /**
- * The day's course given up, once GIVE_UP_AFTER rounds of it are lost: a site day studied as a round won would. Then,
- * and only then, saying is asked to say 苦也！ (studySay.ts), whose answer comes along. Passed or given up already
- * today, it is as it was. Before GIVE_UP_AFTER it is refused (409) with today's; any other course, or yesterday's, as
- * done refuses it.
+ * The day's course given up, once GIVE_UP_AFTER rounds of it are lost: a site day studied as a round won would, with
+ * the 称号 the days reach. Then, and only then, saying is asked to say 苦也！ (studySay.ts), whose answer comes along.
+ * Passed or given up already today, it is as it was. Before GIVE_UP_AFTER it is refused (409) with today's; any other
+ * course, or yesterday's, as done refuses it.
  */
 export async function studyGiveUp(
   user: Pick<UserRow, "id" | "email">,
@@ -170,7 +186,10 @@ export async function studyGiveUp(
       ),
     )
     .returning(DONE_COLUMNS);
-  if (u) return saying ? { ...doneOf(u, day), ...(await saying()) } : doneOf(u, day);
+  if (u) {
+    await studied(user.id, u.days);
+    return saying ? { ...doneOf(u, day), ...(await saying()) } : doneOf(u, day);
+  }
   const [k] = await db
     .select({ ...DONE_COLUMNS, course: users.studyCourse, courseOn: users.studyCourseOn })
     .from(users)
@@ -179,4 +198,21 @@ export async function studyGiveUp(
   const today = await studyToday(user, now);
   if (today.course !== course) throw new HttpError(409, T.server.study.notToday, NOT_TODAY, { today });
   throw new HttpError(409, fmt(T.server.study.notYet, { n: GIVE_UP_AFTER }), NOT_YET, { today });
+}
+
+/**
+ * 命运的 325, as the page tells of a round passed at 325 exactly, any course's: given, unless it was. Like a round won,
+ * the page's word is taken for it. got: given just now.
+ */
+export async function studyFate(user: Pick<UserRow, "id">): Promise<{ got: boolean }> {
+  return { got: (await award(user.id, [FATE_BADGE])).length > 0 };
+}
+
+/**
+ * 准点 325, as the page tells of a round just ended near 3:25 or 15:25 by its clock (rules.ts nearOnTime): given only
+ * if the server's clock says it is that minute still (onTimeNow), as a phone's may be set to anything. got: given just now.
+ */
+export async function studyOnTime(user: Pick<UserRow, "id">, now = Date.now()): Promise<{ got: boolean }> {
+  if (!onTimeNow(now)) return { got: false };
+  return { got: (await award(user.id, [ON_TIME_BADGE])).length > 0 };
 }

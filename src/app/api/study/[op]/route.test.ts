@@ -3,9 +3,10 @@ import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/server/db";
-import { roaches, sessions, users } from "@/lib/server/schema";
+import { roaches, sessions, userBadges, users } from "@/lib/server/schema";
 import { studyMe } from "@/lib/server/study";
 import { isCourse } from "@/lib/study/courses";
+import { beijingDate, beijingMidnight } from "@/lib/beijing";
 import { nextSiteDayAt, siteDay } from "@/lib/siteDay";
 import { GET, POST } from "./route";
 
@@ -89,6 +90,8 @@ describe("325大学习's requests", () => {
     expect((await call("POST", "done", { course: "stopwatch" })).status).toBe(404);
     expect((await call("POST", "giveup", { course: "stopwatch" })).status).toBe(404);
     expect((await call("POST", "announce")).status).toBe(404);
+    expect((await call("POST", "fate")).status).toBe(404);
+    expect((await call("POST", "ontime")).status).toBe(404);
     expect(studyMe(await row(player))).toBeUndefined();
     const owner = await account("owner@example.com");
     await signIn(owner);
@@ -209,6 +212,24 @@ describe("325大学习's requests", () => {
     // a day skipped takes nothing away
     vi.setSystemTime(turn + 2 * 86_400_000 + 60_000);
     expect(await call("POST", "today")).toMatchObject({ status: 200, body: { done: false, days: 2 } });
+  });
+
+  it("give the two hidden 称号 as the page tells of them: 命运的 325 at once, 准点 325 only in its minute by the server's clock", async () => {
+    vi.stubEnv("STUDY", "on");
+    const id = await account("player@example.com");
+    await signIn(id);
+    expect((await call("GET", "fate")).status).toBe(404);
+    expect(await call("POST", "fate")).toMatchObject({ status: 200, body: { got: true }, cache: "no-store" });
+    expect(await call("POST", "fate")).toMatchObject({ status: 200, body: { got: false } });
+    // today's noon and 15:25:30, Beijing time
+    const today = beijingMidnight(beijingDate());
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(today + 12 * 3_600_000);
+    expect(await call("POST", "ontime")).toMatchObject({ status: 200, body: { got: false }, cache: "no-store" });
+    vi.setSystemTime(today + (15 * 60 + 25.5) * 60_000);
+    expect(await call("POST", "ontime")).toMatchObject({ status: 200, body: { got: true } });
+    const badges = await db.select({ badge: userBadges.badge }).from(userBadges).where(eq(userBadges.userId, id));
+    expect(badges.map((b) => b.badge).sort()).toEqual(["fate325", "ontime325"]);
   });
 
   it("wait for the age check and an updated privacy policy", async () => {
