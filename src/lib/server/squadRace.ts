@@ -6,8 +6,11 @@ import {
   GIFT_SEATS,
   RACE_CROWN_MS,
   RACE_EARLY_MS,
+  RACE_LATE_MS,
   RACE_LEAD_MS,
   RACE_MAX_MS,
+  RACE_REPORT_JUMPS,
+  RACE_REPORT_TAPS,
   RACE_RESULT_MS,
   RACE_TAPS_MAX,
   raceObstacles,
@@ -22,10 +25,10 @@ import { modeBots, roomBotsOf } from "./squadGift";
 
 /**
  * 企鹅物流急件赛 on the server (玩点什么; the rules in src/lib/squadMode.ts): its lanes, obstacles and seed decided
- * as it opens and kept on the room (squad_rooms.mode_data) with what each player did, 加油 counts and 跳s (runIn,
+ * as it opens and kept on the room (squad_rooms.mode_data) with what each player sent, 加油 counts and 跳s (raceReport,
  * checked on the server's clock), from which the same rule (raceRun) the pages draw by says where everyone is. Once
  * all are in or its time is up, the order is settled here, the first wears a small crown, and it ends a little later
- * (settleRace). squadModes.ts starts it, takes players out, and ends it.
+ * (settleRace). squadModes.ts starts it, takes players out, keeps their reports, and ends it.
  */
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -64,46 +67,58 @@ export function relaneRace(data: RaceData, h: number, now: number): boolean {
   return true;
 }
 
-/** What a player did, as the room is told: their 加油 count ([when, how many]) or 跳 (when) */
-export type RaceDid = { h: number; tap?: [number, number]; jump?: number };
+/** What a player sent, as kept and told to the room: 加油 counts ([when, how many]) and 跳s (when) */
+export type RaceReport = { taps: [number, number][]; jumps: number[] };
 
 /**
- * 加油 (tap: how many since the last, RACE_TAPS_MAX at most) or 跳 (jump) by a player in a lane, at `at` (the server's
- * clock as the page has it: taken within RACE_EARLY_MS before now, else now; never before their last): refused before
- * the start, once it is over or they are in, and a 跳 while in the air. Within the transaction, the room's row locked.
+ * A racer's report (body: taps [[at, n], ...], jumps [at, ...]; squadMode.ts RACE_REPORT_MS), checked against the race
+ * as read (no lock: kept by one UPDATE appending to their lane, squadModes.ts runRace): their lane's place, and what
+ * counts of it. Each time on the server's clock as the page has it, taken within RACE_EARLY_MS before now (else now);
+ * a count rounded into 1..RACE_TAPS_MAX; those before the start or after its time dropped. Refused: no lane of theirs,
+ * the race over, too early, too many at once, or not as asked.
  */
-export function runIn(data: RaceData, me: number, body: Record<string, unknown>, now: number): RaceDid {
+export function raceReport(data: RaceData, me: number, body: Record<string, unknown>, now: number): RaceReport & { i: number } {
   const i = data.lanes.findIndex((l) => l.h === me);
   if (i < 0) throw refuse(409, T.server.squad.notRacing);
   if (data.end) throw refuse(409, T.server.squad.raceOver);
-  const lane = data.lanes[i];
-  const asked = typeof body.at === "number" && Number.isFinite(body.at) && body.at >= now - RACE_EARLY_MS && body.at <= now + 50 ? body.at : now;
-  if (asked < data.start) throw refuse(409, T.server.squad.raceNotYet);
-  const jump = body.jump === true;
-  const t = Math.max(asked, ...(jump ? lane.jumps : lane.taps.map(([at]) => at)));
-  if (t >= data.start + RACE_MAX_MS) throw refuse(409, T.server.squad.raceOver);
-  const run = raceRun(data, t);
-  if (run.over) throw refuse(409, T.server.squad.raceOver);
-  if (run.done[i] !== null) throw refuse(409, T.server.squad.raceIn);
-  if (jump) {
-    if (run.air[i]) throw refuse(409, T.server.squad.inAir);
-    lane.jumps.push(t);
-    return { h: me, jump: t };
+  if (now + 50 < data.start) throw refuse(409, T.server.squad.raceNotYet);
+  const taps = body.taps ?? [];
+  const jumps = body.jumps ?? [];
+  if (!Array.isArray(taps) || !Array.isArray(jumps) || taps.length > RACE_REPORT_TAPS || jumps.length > RACE_REPORT_JUMPS) throw refuse(400, T.server.common.badRequest);
+  const when = (at: unknown) => (typeof at === "number" && Number.isFinite(at) && at >= now - RACE_EARLY_MS && at <= now + 50 ? at : now);
+  const inTime = (at: number) => at >= data.start && at < data.start + RACE_MAX_MS;
+  const out: RaceReport & { i: number } = { i, taps: [], jumps: [] };
+  for (const cell of taps) {
+    if (!Array.isArray(cell) || cell.length !== 2 || typeof cell[1] !== "number" || !Number.isFinite(cell[1])) throw refuse(400, T.server.common.badRequest);
+    const at = when(cell[0]);
+    if (inTime(at)) out.taps.push([at, Math.min(RACE_TAPS_MAX, Math.max(1, Math.round(cell[1])))]);
   }
-  const n = typeof body.tap === "number" && Number.isInteger(body.tap) ? Math.min(RACE_TAPS_MAX, Math.max(1, body.tap)) : 1;
-  lane.taps.push([t, n]);
-  return { h: me, tap: [t, n] };
+  for (const j of jumps) {
+    if (typeof j !== "number") throw refuse(400, T.server.common.badRequest);
+    const at = when(j);
+    if (inTime(at)) out.jumps.push(at);
+  }
+  return out;
 }
 
 /**
- * The race settled once it is over by now (all in, or its time up), in the room's locked row (data changed in place):
- * the order, each one's time in and metres; the first, a player, with two or more players in it, wears the crown
- * RACE_CROWN_MS from its end. Says when it is to be over (its results shown), or null when it is not over yet.
+ * Whether the race is to be settled by now: everyone in, or its time up RACE_LATE_MS ago (the last reports in by then)
+ */
+export function raceDue(data: Pick<RaceData, "seed" | "start" | "lanes" | "obs" | "end">, now: number) {
+  if (data.end) return false;
+  const run = raceRun(data, now);
+  return run.over && (run.done.every((d) => d !== null) || now >= data.start + RACE_MAX_MS + RACE_LATE_MS);
+}
+
+/**
+ * The race settled once it is due by now (raceDue: all in, or its time up a moment ago), in the room's locked row
+ * (data changed in place): the order, each one's time in and metres; the first, a player, with two or more players in
+ * it, wears the crown RACE_CROWN_MS from its end. Says when it is to be over (its results shown), or null when it is not
+ * due yet.
  */
 export async function settleRace(tx: Tx, roomId: string, data: RaceData, now: number): Promise<number | null> {
-  if (data.end) return null;
+  if (!raceDue(data, now)) return null;
   const run = raceRun(data, now);
-  if (!run.over) return null;
   const at = data.start + run.t;
   const order = raceOrder(run);
   data.end = { at, order, times: run.done, metres: run.x.map((m) => Math.round(m * 10) / 10) };
@@ -123,17 +138,20 @@ export async function settleRace(tx: Tx, roomId: string, data: RaceData, now: nu
 const g = globalThis as unknown as { raceTimers?: Map<string, ReturnType<typeof setInterval>> };
 const timers = (g.raceTimers ??= new Map());
 
-/** Looked at every half second (by settle, which settles it, tells the room and ends it in time) till it is over, in this process */
+/**
+ * Looked at every second (by settle, which reads it without a lock and settles it, tells the room and ends it in time
+ * once it is due) till it is over, in this process
+ */
 export function watchRace(roomId: string, data: RaceData, settle: (roomId: string) => Promise<{ over: boolean }>) {
   forgetRace(roomId);
-  const last = raceLatest(data.start) + 2_000;
+  const last = raceLatest(data.start) + RACE_LATE_MS + 2_000;
   const t = setInterval(() => {
     if (Date.now() > last) return forgetRace(roomId);
     void settle(roomId).then(
       (r) => r.over && forgetRace(roomId),
       () => {},
     );
-  }, 500);
+  }, 1_000);
   t.unref?.();
   timers.set(roomId, t);
 }

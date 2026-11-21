@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { fmt, T } from "@/i18n";
 import type { SquadMember, SquadRoom } from "@/lib/squad";
-import { RACE_JUMP_MS, RACE_M, RACE_MAX_MS, RACE_TAPS_MAX, raceOrder, raceRun, type RaceMode, type RaceNow } from "@/lib/squadMode";
+import { RACE_CELL_MS, RACE_JUMP_MS, RACE_M, RACE_MAX_MS, RACE_TAPS_MAX, raceOrder, raceRun, type RaceMode, type RaceNow } from "@/lib/squadMode";
 import type { RoachAvatar, RoachColor } from "@/lib/types";
 import { WorldError } from "@/lib/world/types";
 import { picOf } from "../fish/words";
 import { SquadRoach } from "./SquadRoach";
 import { StackBehind } from "./SquadStack";
-import { closeSquadModeCard, squadModeIn, squadRaceJump, squadRaceTap, squadServerNow, useSquadModeCard, useSquadRoom } from "./squading";
+import { closeSquadModeCard, squadModeIn, squadRaceJump, squadRaceSeen, squadRaceTap, squadServerNow, useSquadModeCard, useSquadRoom } from "./squading";
 import "./squadModes.css";
 
 /**
@@ -18,9 +18,82 @@ import "./squadModes.css";
  * going by slower than the street, the four lanes with the obstacles (the same in each), the roaches with their parcels,
  * those out of sight told at the edges, the finish with 大帝 by the 企鹅物流 van. Over it the place and metres left
  * and the clock, and a strip with where the four are. Under it how many 加油 count now, 跳 and 加油！. Where everyone
- * is comes from what they did by the server's own rule (raceRun), the server's order in the end. The card follows the
+ * is comes from what they did by the server's own rule (raceRun), the server's order in the end. The others' reports
+ * come every two seconds (squadMode.ts RACE_REPORT_MS): meanwhile their roaches run on at their last second's pace
+ * (racePredicted, drawn only), eased to where a report puts them (raceDrawnFrom / raceDrawnAt). The card follows the
  * canvas 「企鹅物流急件赛」.
  */
+
+/**
+ * Another player's lane run on from as far as this page knows it (upTo: the server's now as their last report was
+ * told, squading.ts squadRaceSeen) to now, at their last second's pace: a count every RACE_CELL_MS, that second's 加油
+ * shared out. Only to draw by: never kept, never in the order. Yours and the 人机's as they are.
+ */
+export function racePredicted(mode: RaceMode, you: number, upTo: (h: number) => number, now: number): RaceMode {
+  const end = Math.min(now, mode.start + RACE_MAX_MS);
+  const lanes = mode.lanes.map((l) => {
+    if (l.h < 0 || l.h === you) return l;
+    const from = Math.max(upTo(l.h), mode.start);
+    let rate = 0;
+    for (const [at, k] of l.taps) if (at > from - 1_000 && at <= from) rate += k;
+    rate = Math.min(RACE_TAPS_MAX, rate);
+    if (!rate || end <= from) return l;
+    const more: [number, number][] = [];
+    for (let at = from + RACE_CELL_MS; at <= end; at += RACE_CELL_MS) more.push([at, (rate * RACE_CELL_MS) / 1_000]);
+    return { ...l, taps: [...l.taps, ...more] };
+  });
+  return { ...mode, lanes };
+}
+
+/** How another's roach is eased as a report moves it: time constant (ms; nearly there in half a second), and how far ahead it waits */
+export const RACE_DRAW_MS = 170;
+export const RACE_BACK_M = 5;
+/** Another's roach between reports: off where it was drawn (fading), or held where it was till its lane comes up to it */
+export type RaceDrawn = { off: number; at: number; hold: number | null };
+/**
+ * A report in: from where another's roach was drawn (drawn, metres) to where its lane now has it (target), at now. Ahead
+ * of it by RACE_BACK_M or less, it waits there; behind it, or further ahead, it eases over.
+ */
+export function raceDrawnFrom(drawn: number, target: number, now: number): RaceDrawn {
+  const off = drawn - target;
+  return off > 0 && off <= RACE_BACK_M ? { off: 0, at: now, hold: drawn } : { off, at: now, hold: null };
+}
+/** Where to draw it at now, its lane having it at target */
+export function raceDrawnAt(d: RaceDrawn, target: number, now: number): number {
+  if (d.hold !== null) return Math.max(target, d.hold);
+  return target + d.off * Math.exp(-Math.max(0, now - d.at) / RACE_DRAW_MS);
+}
+
+/** The others' roaches as drawn, by player: the race they are of, the report last seen, the easing, where last drawn */
+const drawn = new Map<number, { start: number; seen: string; d: RaceDrawn; x: number }>();
+
+/**
+ * The race as this page draws it now: the others run on between reports and eased (racePredicted, raceDrawnAt) while
+ * it runs; as it is once over
+ */
+export function raceDrawn(room: SquadRoom, mode: RaceMode, now: number): RaceNow {
+  const live = !mode.end && now < mode.start + RACE_MAX_MS;
+  const seen = (h: number) => squadRaceSeen(mode.start, h);
+  const run = raceRun(live ? racePredicted(mode, room.you, seen, now) : mode, now);
+  if (!live) return run;
+  const x = run.x.map((target, i) => {
+    const lane = mode.lanes[i];
+    if (lane.h < 0 || lane.h === room.you || run.done[i] !== null) return target;
+    const key = `${lane.taps.length}/${lane.jumps.length}/${seen(lane.h)}`;
+    const was = drawn.get(lane.h);
+    if (!was || was.start !== mode.start) {
+      drawn.set(lane.h, { start: mode.start, seen: key, d: { off: 0, at: now, hold: null }, x: target });
+      return target;
+    }
+    if (was.seen !== key) {
+      was.d = raceDrawnFrom(was.x, target, now);
+      was.seen = key;
+    }
+    was.x = raceDrawnAt(was.d, target, now);
+    return was.x;
+  });
+  return { ...run, x };
+}
 
 /** The street's length on the page (px), the lanes' middles (px from the scene's top) */
 const WORLD = RACE_M * 10;
@@ -330,7 +403,7 @@ export function RaceView({
   onLeave: () => void;
 }) {
   const t = T.squad.race;
-  const run = raceRun(mode, now);
+  const run = raceDrawn(room, mode, now);
   const phase = racePhase(mode, run, now);
   const mine = mode.lanes.findIndex((l) => l.h === room.you);
   const me = mode.in.some((m) => m.h === room.you);
@@ -489,9 +562,7 @@ export default function SquadRace() {
         setTaps((was) => [...was.filter((x) => Date.now() - x < 1_000), Date.now()]);
         squadRaceTap();
       }}
-      onJump={() => {
-        squadRaceJump().catch((e: unknown) => setMsg(e instanceof WorldError ? e.message : T.map.common.tryAgain));
-      }}
+      onJump={squadRaceJump}
       onJoin={() => void run(() => squadModeIn(true))}
       onLeave={() => void run(() => squadModeIn(false))}
     />

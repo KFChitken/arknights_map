@@ -749,8 +749,6 @@ export const zh = {
       raceNotYet: "还没开跑。",
       raceOver: "这一场已经跑完了。",
       notRacing: "先加入才能跑。",
-      raceIn: "你已经到了。",
-      inAir: "还在空中。",
       /** A match's 开始 (only its initiator, only while it waits), a round's late comer, 喊一声 with no match */
       notInitiator: "只有发起人能点开始。",
       begunAlready: "已经开始了。",

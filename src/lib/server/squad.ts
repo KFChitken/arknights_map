@@ -342,13 +342,13 @@ export function danceInRoom(roomId: string, danced: Danced) {
   b.push(danced);
 }
 
-/** 企鹅物流急件赛's own batches: what each did, told to the room RACE_BATCH_MS after the first */
+/** 企鹅物流急件赛's own batches: each racer's report, with the server's now it is known up to, told to the room RACE_BATCH_MS after the first */
 type Raced = Extract<SquadTell, { t: "race" }>["items"][number];
 const RACE_BATCH_MS = 250;
 const gr = globalThis as unknown as { squadRaces?: Map<string, { items: Raced[]; timer: ReturnType<typeof setTimeout> }> };
 const raced = (gr.squadRaces ??= new Map());
 
-/** For 企鹅物流急件赛 (src/lib/server/squadModes.ts): a 加油 count or a 跳, told to the whole room with the next quarter second's */
+/** For 企鹅物流急件赛 (src/lib/server/squadModes.ts): a racer's report, told to the whole room with the next quarter second's */
 export function raceInRoom(roomId: string, did: Raced) {
   let b = raced.get(roomId);
   if (!b) {

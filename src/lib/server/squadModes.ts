@@ -1,6 +1,6 @@
 import "server-only";
 import { randomInt } from "node:crypto";
-import { and, asc, eq, isNotNull, isNull, lte, ne, notInArray, or } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, lte, ne, notInArray, or, sql } from "drizzle-orm";
 import { T } from "@/i18n";
 import { readDance, type DanceBeats } from "../dance";
 import { NOT_IN_ROOM } from "../squad";
@@ -41,7 +41,7 @@ import { songList, songOf, type HeldSong } from "./songs";
 import { danceInRoom, raceInRoom, roomOf, stackInRoom, tellSquadPlay } from "./squad";
 import { forgetGift, giftRooms, makeGift, passIn, reseatGift, settleGift, watchGift } from "./squadGift";
 import { clearMode, handLobby, lobbyTell, type LobbyNews } from "./squadLobby";
-import { forgetRace, makeRace, raceLatest, relaneRace, runIn, settleRace, watchRace } from "./squadRace";
+import { forgetRace, makeRace, raceDue, raceLatest, raceReport, relaneRace, settleRace, watchRace } from "./squadRace";
 import { endQuiz, makeQuiz } from "./squadQuiz";
 import { countBlock, dropIn } from "./squadStack";
 
@@ -360,7 +360,7 @@ export async function startMatch(user: Pick<UserRow, "id">, now = Date.now(), ra
     return { roomId: room.id, h: me.handle, kind: room.mode, gift, race };
   });
   if (done.gift) watchGift(done.roomId, done.gift, (id) => settleRoom(id));
-  if (done.race) watchRace(done.roomId, done.race, (id) => settleRaceRoom(id));
+  if (done.race) watchRace(done.roomId, done.race, (id) => settleRaceDue(id));
   await tellSquadPlay(done.roomId, { kind: "mode", h: done.h, on: true, lobby: "start", mode: done.kind });
   return { now };
 }
@@ -525,9 +525,9 @@ async function raceRooms(): Promise<string[]> {
 }
 
 /**
- * 企鹅物流急件赛 in this room settled once it is over by now (squadRace.ts settleRace: its end RACE_RESULT_MS on),
- * the room told; and waiting again at that end. Its own timer, the sweep and every 加油 or 跳 come here. over: no
- * round of it runs (any more); ended: this one went back to waiting just now.
+ * 企鹅物流急件赛 in this room settled once it is due by now (squadRace.ts settleRace: its end RACE_RESULT_MS on),
+ * the room told; and waiting again at that end. Its own watch (settleRaceDue), the sweep and a report of one in
+ * (runRace) come here. over: no round of it runs (any more); ended: this one went back to waiting just now.
  */
 export async function settleRaceRoom(roomId: string, now = Date.now()) {
   const done = await db.transaction(async (tx) => {
@@ -551,24 +551,58 @@ export async function settleRaceRoom(roomId: string, now = Date.now()) {
 }
 
 /**
- * 加油 (tap: how many) or 跳 (jump) in 企鹅物流急件赛 (at: the server's clock as the page has it): the race settled
- * first, then kept, and told to the room with the next quarter second's
+ * 企鹅物流急件赛 looked at without a lock (its watch, each second): settled (settleRaceRoom, locked) only once it is due
+ * (squadRace.ts raceDue) or its results are over, so most seconds cost one read
+ */
+export async function settleRaceDue(roomId: string, now = Date.now()) {
+  const [room] = await db
+    .select({ endedAt: squadRooms.endedAt, mode: squadRooms.mode, modeData: squadRooms.modeData, modeUntil: squadRooms.modeUntil })
+    .from(squadRooms)
+    .where(eq(squadRooms.id, roomId));
+  const round = room && !room.endedAt && room.mode === "race" ? roundOf(room) : null;
+  if (!room || !round) return { over: true, ended: false };
+  const data = room.modeData as RaceData;
+  const due = data.end ? (room.modeUntil?.getTime() ?? 0) <= now : raceDue(data, now);
+  return due ? settleRaceRoom(roomId, now) : { over: false, ended: false };
+}
+
+/**
+ * A racer's report in 企鹅物流急件赛 (run {taps, jumps, in}: what they did since their last, squadRace.ts raceReport),
+ * checked against the room as read and appended to their own lane by one UPDATE (no lock held, nothing read back: two
+ * racers at once both kept), then told to the room with the next quarter second's, each with the server's now it is
+ * known up to (upTo). in: they are in by their page's count, so the race is settled now if everyone is.
  */
 export async function runRace(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
   const mine = await roomOf(db, user.id);
   if (!mine) throw notInRoom();
-  await settleRaceRoom(mine.room.id, now);
-  const done = await db.transaction(async (tx) => {
-    const { room, me } = await lockedMine(tx, user.id);
-    if (room.mode !== "race" || !roundOf(room)) throw refuse(409, T.server.squad.noMode);
-    if (!me.modeIn) throw refuse(409, T.server.squad.notRacing);
-    const data = structuredClone(room.modeData as RaceData);
-    const did = runIn(data, me.handle, body, now);
-    await tx.update(squadRooms).set({ modeData: data }).where(eq(squadRooms.id, room.id));
-    return { roomId: room.id, did };
-  });
-  raceInRoom(done.roomId, done.did);
-  return { now, ...done.did };
+  const { room, me } = mine;
+  if (room.mode !== "race" || !roundOf(room)) throw refuse(409, T.server.squad.noMode);
+  if (!me.modeIn) throw refuse(409, T.server.squad.notRacing);
+  const data = room.modeData as RaceData;
+  const got = raceReport(data, me.handle, body, now);
+  if (got.taps.length || got.jumps.length) {
+    const lane = (key: string) => `{lanes,${got.i},${key}}`;
+    const kept = await db
+      .update(squadRooms)
+      .set({
+        modeData: sql`jsonb_set(jsonb_set(${squadRooms.modeData}, ${lane("taps")}::text[], coalesce(${squadRooms.modeData} #> ${lane("taps")}::text[], '[]'::jsonb) || ${JSON.stringify(got.taps)}::jsonb), ${lane("jumps")}::text[], coalesce(${squadRooms.modeData} #> ${lane("jumps")}::text[], '[]'::jsonb) || ${JSON.stringify(got.jumps)}::jsonb)`,
+      })
+      .where(
+        and(
+          eq(squadRooms.id, room.id),
+          isNull(squadRooms.endedAt),
+          eq(squadRooms.mode, "race"),
+          sql`${squadRooms.modeData} -> 'end' is null`,
+          sql`(${squadRooms.modeData} ->> 'start')::bigint = ${data.start}`,
+          sql`(${squadRooms.modeData} #>> ${lane("h")}::text[])::int = ${me.handle}`,
+        ),
+      )
+      .returning({ id: squadRooms.id });
+    if (!kept.length) throw refuse(409, T.server.squad.raceOver);
+    raceInRoom(room.id, { h: me.handle, taps: got.taps, jumps: got.jumps, upTo: now });
+  }
+  if (body.in === true) await settleRaceRoom(room.id, now);
+  return { now, taps: got.taps, jumps: got.jumps };
 }
 
 // ---- 基建加盖 ----

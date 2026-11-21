@@ -338,7 +338,8 @@ export const giftLatest = (first: number) => first + GIFT_ROUNDS * (GIFT_ROUND_M
  * a 人机 takes a speed between RACE_BOT_MIN and RACE_BOT_MAX every RACE_BOT_EVERY_MS. On the way, the same in every
  * lane: 理智顶液 (run RACE_POTION_PLUS faster RACE_POTION_MS, unless jumped over), 白开水 (RACE_WATER_SLOW of the speed
  * RACE_WATER_MS), 源石虫 (stopped RACE_SLUG_MS) and 近卫局路障 (stopped RACE_BAR_MS), none of which hurt one in the
- * air (a jump: RACE_JUMP_MS); a 人机 jumps RACE_BOT_JUMPS of the time RACE_BOT_SEE_M before an obstacle. Speeds
+ * air (a jump: RACE_JUMP_MS; another 跳 before it lands counts for nothing); a 人机 jumps RACE_BOT_JUMPS of the time
+ * RACE_BOT_SEE_M before an obstacle. Speeds
  * change smoothly (RACE_EASE). It starts RACE_LEAD_MS after it opens and ends when all are in, or RACE_MAX_MS on;
  * the server settles the order (from what each did, by the same rule the pages draw it by) and RACE_RESULT_MS later
  * it is over. The first in, a player, with two or more players in it, wears a small crown RACE_CROWN_MS.
@@ -367,8 +368,21 @@ export const RACE_EASE = 6;
 export const RACE_CROWN_MS = 60_000;
 /** The rule runs in steps of this (ms), the same on the server and the pages */
 export const RACE_STEP_MS = 50;
+/**
+ * A racer's page counts its 加油 by the quarter second (RACE_CELL_MS: a count and when, on the server's clock) and
+ * runs its own roach on them at once, and sends them with its 跳s every RACE_REPORT_MS (at once as it signs in, its
+ * time is up, it leaves the race or the page is hidden), RACE_REPORT_TAPS counts and RACE_REPORT_JUMPS 跳s at most at a
+ * time. The others see them as they come, so a roach of another is up to that much late, run on at its last second's
+ * pace meanwhile.
+ */
+export const RACE_CELL_MS = 250;
+export const RACE_REPORT_MS = 2_000;
+export const RACE_REPORT_TAPS = 16;
+export const RACE_REPORT_JUMPS = 8;
 /** A 加油 count or a 跳's own time, as the page sends it on the server's clock, taken within this before the server's now */
-export const RACE_EARLY_MS = 400;
+export const RACE_EARLY_MS = RACE_REPORT_MS + 1_000;
+/** A race whose time is up, not everyone in, is settled this much after, for the last reports to come in */
+export const RACE_LATE_MS = 1_500;
 /** The obstacles of a race: 白开水 twice, 源石虫, 理智顶液, 近卫局路障, at random between these (m), this far apart at least */
 export const RACE_OBSTACLES = ["water", "water", "slug", "potion", "bar"] as const;
 export const RACE_OBS_FROM = 40;
@@ -424,6 +438,13 @@ export type RaceNow = {
   over: boolean;
 };
 
+/** The 跳s that count of a lane's, in order: one before the last that counts has landed (RACE_JUMP_MS) counts for nothing */
+export function raceJumps(jumps: readonly number[]): number[] {
+  const out: number[] = [];
+  for (const j of [...jumps].sort((a, b) => a - b)) if (!out.length || j >= out[out.length - 1] + RACE_JUMP_MS) out.push(j);
+  return out;
+}
+
 /** 加油 counted at t (absolute) from a lane's: those of the last second, RACE_TAPS_MAX at most */
 const tapsAt = (taps: readonly [number, number][], t: number) => {
   let n = 0;
@@ -449,13 +470,14 @@ export function raceRun(race: Pick<RaceData, "seed" | "start" | "lanes" | "obs">
   const ate = Array<boolean>(n).fill(false);
   const last: RaceNow["last"] = Array(n).fill(null);
   const decided = race.lanes.map(() => new Set<number>());
+  const jumps = race.lanes.map((l) => (l.h < 0 ? [] : raceJumps(l.jumps)));
   const dt = RACE_STEP_MS / 1_000;
   /** How far into a jump lane i is at t (ms from the start), or null */
   const jumpT = (i: number, t: number): number | null => {
     const lane = race.lanes[i];
     if (lane.h < 0) return botJump[i] >= 0 && t - botJump[i] < RACE_JUMP_MS ? t - botJump[i] : null;
     const abs = race.start + t;
-    const j = lane.jumps.find((x) => x <= abs && abs < x + RACE_JUMP_MS);
+    const j = jumps[i].find((x) => x <= abs && abs < x + RACE_JUMP_MS);
     return j === undefined ? null : abs - j;
   };
   const inAir = (i: number, t: number) => jumpT(i, t) !== null;

@@ -4,13 +4,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SquadMember, SquadRoom } from "@/lib/squad";
 import {
   RACE_BASE,
+  RACE_JUMP_MS,
   RACE_LEAD_MS,
   RACE_M,
   RACE_MAX_MS,
+  RACE_REPORT_MS,
   RACE_OBS_FROM,
   RACE_OBS_GAP,
   RACE_OBS_TO,
   RACE_PER_TAP,
+  raceJumps,
   raceObstacles,
   raceOrder,
   raceRun,
@@ -19,8 +22,8 @@ import {
   type RaceMode,
   type RaceObstacle,
 } from "@/lib/squadMode";
-import { RaceView, laneOf, racePhase, raceStatus, raceTip } from "./SquadRace";
-import { forgetSquadPage, heardSquad, loadSquadRoom, squadRaceJump, squadRaceTap, squadRoomNow } from "./squading";
+import { RACE_BACK_M, RaceView, laneOf, raceDrawnAt, raceDrawnFrom, racePhase, racePredicted, raceStatus, raceTip } from "./SquadRace";
+import { forgetSquadPage, heardSquad, loadSquadRoom, squadRaceJump, squadRaceSeen, squadRaceTap, squadRoomNow } from "./squading";
 
 const NOW = Date.parse("2026-11-20T13:00:00+08:00");
 const member = (h: number, more: Partial<SquadMember> = {}): SquadMember => ({
@@ -162,6 +165,13 @@ describe("the race's rule", () => {
     expect(at([{ m: 20, k: "potion" }], [jump])).toBeCloseTo(free, 0);
   });
 
+  it("counts a 跳 only once the one before has landed, so one sent twice changes nothing", () => {
+    expect(raceJumps([NOW + 900, NOW + 100, NOW + 300, NOW + 100 + RACE_JUMP_MS])).toEqual([NOW + 100, NOW + 100 + RACE_JUMP_MS]);
+    const once = plain([{ h: 1, taps: flatOut(NOW), jumps: [NOW + 2_000] }], [{ m: 55, k: "slug" }]);
+    const twice = plain([{ h: 1, taps: flatOut(NOW), jumps: [NOW + 2_000, NOW + 2_200] }], [{ m: 55, k: "slug" }]);
+    for (const t of [NOW + 2_300, NOW + 2_700, NOW + 6_000]) expect(raceRun(twice, t)).toEqual(raceRun(once, t));
+  });
+
   it("runs the 人机 by the seed alone, the same everywhere, and orders those in by time, then the rest by metres", () => {
     const bots = plain([
       { h: -100, taps: [], jumps: [] },
@@ -246,50 +256,199 @@ describe("the race on the page", () => {
     vi.useRealTimers();
   });
 
-  function server(r: SquadRoom, answer: (body: Record<string, unknown>) => { status: number; json: unknown }) {
-    const sent: { url: string; body: Record<string, unknown> }[] = [];
-    const later: (() => void)[] = [];
+  /**
+   * A page whose own timers go off as its clock is moved on (go), the room read as given, and the server answering a
+   * report as given (else keeping all of it)
+   */
+  function page(r: () => SquadRoom, answer: (body: Record<string, unknown>) => { status: number; json?: unknown } = () => ({ status: 200 })) {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    let id = 0;
+    const timers = new Map<number, { at: number; fn: () => void }>();
+    const sent: Record<string, unknown>[] = [];
     vi.stubGlobal("window", {
       __ZP_I18N: globalThis.__ZP_I18N_SERVER!(),
-      setTimeout: (f: () => void) => {
-        later.push(f);
-        return later.length;
+      setTimeout: (fn: () => void, ms = 0) => {
+        timers.set(++id, { at: Date.now() + ms, fn });
+        return id;
       },
-      clearTimeout: () => {},
+      clearTimeout: (k: number) => void timers.delete(k),
       localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
     });
     vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url === "/api/squad/room") return new Response(JSON.stringify({ room: { ...r(), now: Date.now() }, now: Date.now() }));
       const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
-      sent.push({ url, body });
-      if (url === "/api/squad/room") return new Response(JSON.stringify({ room: r, now: Date.now() }));
+      if (url === "/api/squad/run") sent.push(body);
       const res = answer(body);
-      return new Response(JSON.stringify(res.json), { status: res.status });
+      return new Response(JSON.stringify(res.json ?? { now: Date.now(), taps: body.taps, jumps: body.jumps }), { status: res.status });
     });
-    return { sent, later };
+    const settle = async () => {
+      for (let i = 0; i < 4; i++) await new Promise((done) => setTimeout(done, 0));
+    };
+    /** The clock moved on to t, each timer due by then gone off in turn, and what they started let finish */
+    const go = async (t: number) => {
+      for (;;) {
+        const due = [...timers.entries()].filter(([, x]) => x.at <= t).sort((p, q) => p[1].at - q[1].at)[0];
+        if (!due) break;
+        timers.delete(due[0]);
+        vi.setSystemTime(Math.max(Date.now(), due[1].at));
+        due[1].fn();
+        await settle();
+      }
+      vi.setSystemTime(t);
+      await settle();
+    };
+    return { sent, go, settle };
   }
+  const lane = (h: number) => (squadRoomNow()!.mode as RaceMode).lanes.find((l) => l.h === h)!;
 
-  it("sends your 加油 each quarter second as one count, 跳 at once, both in your lane here at once; the others' as the room tells them", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(NOW + 2_000);
-    const { sent, later } = server(room({ mode: race(), now: NOW + 2_000 }), (b) => ({ status: 200, json: { now: NOW + 2_000, h: 1, ...("jump" in b ? { jump: b.at } : { tap: [b.at, b.tap] }) } }));
+  it("counts your 加油 by the quarter second into your lane at once, and reports them with your 跳s every two seconds", async () => {
+    const { sent, go } = page(() => room({ mode: race() }));
     await loadSquadRoom();
+    await go(NOW + 1_000);
     squadRaceTap();
     squadRaceTap();
     squadRaceTap();
-    expect(sent.filter((s) => s.url === "/api/squad/run")).toHaveLength(0);
-    // the quarter second is up
-    later.splice(0).forEach((f) => f());
-    expect((squadRoomNow()!.mode as RaceMode).lanes[0].taps).toEqual([[NOW + 2_000, 3]]);
-    await Promise.resolve();
-    expect(sent.find((s) => s.url === "/api/squad/run")?.body).toEqual({ tap: 3, at: NOW + 2_000 });
-    vi.setSystemTime(NOW + 2_300);
-    await squadRaceJump();
-    expect((squadRoomNow()!.mode as RaceMode).lanes[0].jumps).toEqual([NOW + 2_300]);
-    expect(sent.at(-1)?.body).toEqual({ jump: true, at: NOW + 2_300 });
-    // the room's tell: 企鹅物流's into TA's lane; yours (already in) not twice
-    heardSquad(JSON.stringify({ t: "race", room: "r1", items: [{ h: 2, tap: [NOW + 2_100, 4] }, { h: 1, tap: [NOW + 2_000, 3] }, { h: 2, jump: NOW + 2_200 }] }));
-    const lanes = (squadRoomNow()!.mode as RaceMode).lanes;
-    expect(lanes[1]).toEqual({ h: 2, taps: [[NOW + 2_100, 4]], jumps: [NOW + 2_200] });
-    expect(lanes[0].taps).toEqual([[NOW + 2_000, 3]]);
+    expect(lane(1).taps).toEqual([]);
+    // the quarter second is up: in your lane at once, and the first report goes
+    await go(NOW + 1_250);
+    expect(lane(1).taps).toEqual([[NOW + 1_250, 3]]);
+    expect(sent).toEqual([{ taps: [[NOW + 1_250, 3]], jumps: [] }]);
+    // more within the next two seconds: in your lane each at once, reported together
+    for (const t of [NOW + 1_600, NOW + 2_100]) {
+      await go(t);
+      squadRaceTap();
+    }
+    await go(NOW + 2_200);
+    squadRaceJump();
+    expect(lane(1).jumps).toEqual([NOW + 2_200]);
+    // still in the air: nothing
+    await go(NOW + 2_300);
+    squadRaceJump();
+    expect(lane(1).jumps).toEqual([NOW + 2_200]);
+    expect(lane(1).taps).toEqual([
+      [NOW + 1_250, 3],
+      [NOW + 1_850, 1],
+    ]);
+    expect(sent).toHaveLength(1);
+    await go(NOW + 1_250 + RACE_REPORT_MS);
+    expect(lane(1).taps.at(-1)).toEqual([NOW + 2_350, 1]);
+    expect(sent).toEqual([
+      { taps: [[NOW + 1_250, 3]], jumps: [] },
+      {
+        taps: [
+          [NOW + 1_850, 1],
+          [NOW + 2_350, 1],
+        ],
+        jumps: [NOW + 2_200],
+      },
+    ]);
+  });
+
+  it("keeps a report that failed for the next, and puts what the server has not got back into your lane as the room is read again", async () => {
+    let fail = true;
+    const kept: [number, number][] = [];
+    const { sent, go } = page(
+      () => room({ mode: race({ lanes: [{ h: 1, taps: [...kept], jumps: [] }, ...race().lanes.slice(1)] }) }),
+      (body) => {
+        if (fail) return { status: 503, json: { error: "忙" } };
+        kept.push(...(body.taps as [number, number][]));
+        return { status: 200 };
+      },
+    );
+    await loadSquadRoom();
+    await go(NOW + 1_000);
+    squadRaceTap();
+    await go(NOW + 1_250);
+    expect(sent).toHaveLength(1);
+    // the room read again (the server has none of it): yours back in your lane
+    await loadSquadRoom();
+    expect(lane(1).taps).toEqual([[NOW + 1_250, 1]]);
+    squadRaceTap();
+    await go(NOW + 1_500);
+    fail = false;
+    await go(NOW + 1_250 + RACE_REPORT_MS);
+    expect(sent.at(-1)).toEqual({
+      taps: [
+        [NOW + 1_250, 1],
+        [NOW + 1_500, 1],
+      ],
+      jumps: [],
+    });
+    // kept now: read again, each once
+    await loadSquadRoom();
+    expect(lane(1).taps).toEqual([
+      [NOW + 1_250, 1],
+      [NOW + 1_500, 1],
+    ]);
+  });
+
+  it("reports at once, saying you are in, as your roach signs in", async () => {
+    const near = race({ lanes: [{ h: 1, taps: flatOut(NOW - 1_000, 60), jumps: [] }, ...race().lanes.slice(1)] });
+    const { sent, go } = page(() => room({ mode: near }));
+    await loadSquadRoom();
+    const done = raceRun(near, NOW + RACE_MAX_MS).done[0]!;
+    // one 加油 a little before it signs in: reported, then in as it is
+    await go(NOW + done - 600);
+    squadRaceTap();
+    await go(NOW + done - 300);
+    expect(sent).toHaveLength(1);
+    await go(NOW + done + 250);
+    expect(sent.at(-1)).toEqual({ taps: [], jumps: [], in: true });
+    expect(sent).toHaveLength(2);
+  });
+
+  it("takes the others' reports into their lanes once each, known up to the server's now then; yours are in already", async () => {
+    page(() => room({ mode: race() }));
+    await loadSquadRoom();
+    expect(squadRaceSeen(NOW, 2)).toBe(NOW);
+    const tell = { t: "race", room: "r1", items: [{ h: 2, taps: [[NOW + 1_100, 4]], jumps: [NOW + 1_200], upTo: NOW + 2_000 }, { h: 1, taps: [[NOW + 1_000, 3]], jumps: [], upTo: NOW + 2_000 }] };
+    heardSquad(JSON.stringify(tell));
+    heardSquad(JSON.stringify(tell));
+    expect(lane(2)).toEqual({ h: 2, taps: [[NOW + 1_100, 4]], jumps: [NOW + 1_200] });
+    expect(lane(1).taps).toEqual([]);
+    expect(squadRaceSeen(NOW, 2)).toBe(NOW + 2_000);
+  });
+});
+
+describe("the others' roaches between their reports", () => {
+  it("run on from as far as they are known at their last second's pace, drawn only", () => {
+    const taps: [number, number][] = [
+      [NOW + 500, 2],
+      [NOW + 1_250, 2],
+      [NOW + 1_500, 1],
+      [NOW + 1_750, 1],
+      [NOW + 2_000, 2],
+    ];
+    const mode = race({ lanes: [{ h: 1, taps: [], jumps: [] }, { h: 2, taps, jumps: [] }, ...race().lanes.slice(2)] });
+    const drawn = racePredicted(mode, 1, () => NOW + 2_000, NOW + 3_000);
+    // its last second: 6 in all, a count of 1.5 each quarter second on
+    expect(drawn.lanes[1].taps).toEqual([...taps, [NOW + 2_250, 1.5], [NOW + 2_500, 1.5], [NOW + 2_750, 1.5], [NOW + 3_000, 1.5]]);
+    expect(mode.lanes[1].taps).toEqual(taps);
+    // yours and the 人机's as they are; one known up to now, as it is
+    expect(drawn.lanes[0]).toBe(mode.lanes[0]);
+    expect(drawn.lanes[2]).toBe(mode.lanes[2]);
+    expect(racePredicted(mode, 1, () => NOW + 3_000, NOW + 3_000).lanes[1]).toBe(mode.lanes[1]);
+    // running on at that pace, as if the counts had come
+    const run = raceRun(drawn, NOW + 3_000);
+    expect(run.x[1]).toBeGreaterThan(raceRun(mode, NOW + 3_000).x[1]);
+  });
+
+  it("ease to where a report puts them, never back unless more than 5 m ahead", () => {
+    // behind: caught up in about half a second, never past
+    const behind = raceDrawnFrom(40, 46, NOW);
+    expect(raceDrawnAt(behind, 46, NOW)).toBe(40);
+    expect(raceDrawnAt(behind, 50, NOW + 250)).toBeGreaterThan(47);
+    expect(raceDrawnAt(behind, 50, NOW + 250)).toBeLessThan(50);
+    expect(raceDrawnAt(behind, 55, NOW + 600)).toBeCloseTo(55, 0);
+    // a little ahead: waits where it is till its lane comes up to it
+    const ahead = raceDrawnFrom(50, 47, NOW);
+    expect(raceDrawnAt(ahead, 47, NOW + 100)).toBe(50);
+    expect(raceDrawnAt(ahead, 49.5, NOW + 300)).toBe(50);
+    expect(raceDrawnAt(ahead, 51, NOW + 400)).toBe(51);
+    // far ahead: back, eased
+    const far = raceDrawnFrom(50, 50 - RACE_BACK_M - 1, NOW);
+    expect(raceDrawnAt(far, 44, NOW + 100)).toBeLessThan(50);
+    expect(raceDrawnAt(far, 44, NOW + 700)).toBeCloseTo(44, 0);
   });
 });

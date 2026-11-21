@@ -27,7 +27,7 @@ import { openFishWin, tapFishNow, useFishWin } from "../fish/winStore";
 import { giftPhase } from "./SquadGift";
 import { ListenRow } from "./SquadListen";
 import { quizPhase, resultLine, useIntro, useQuizAsks } from "./SquadQuiz";
-import { racePhase } from "./SquadRace";
+import { racePhase, racePredicted } from "./SquadRace";
 import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
 import { SayTab } from "./SquadTalk";
 import ThrowPicker from "./SquadThrow";
@@ -39,6 +39,7 @@ import {
   squadStartMatch,
   squadQuizAnswer,
   squadRaceJump,
+  squadRaceSeen,
   squadRaceTap,
   squadServerNow,
   squadStackDrop,
@@ -119,7 +120,8 @@ export function stripOf(room: SquadRoom, mode: SquadMode, now: number, picks: Qu
   {
     const lane = mode.lanes.findIndex((l) => l.h === room.you);
     if (lane < 0) return { kind, text: line(t.raceNext), lit: false, acts: [] };
-    const run = raceRun(mode, now);
+    // the others run on between their reports, as the card draws them
+    const run = raceRun(mode.end ? mode : racePredicted(mode, room.you, (h) => squadRaceSeen(mode.start, h), now), now);
     const ph = racePhase(mode, run, now);
     if (ph === "lead") return { kind, text: line(fmt(T.squad.race.startsIn, { s: secs(mode.start - now) })), lit: false, acts: [] };
     if (ph === "checking") return { kind, text: line(T.squad.race.checking), lit: false, acts: [] };
@@ -471,7 +473,7 @@ function SquadMini({ room, where, onListen, onToast }: { room: SquadRoom; where:
     if (act === "join") return void run(() => squadModeIn(true));
     if (act === "danceTap") return void squadDanceTap(null).catch(fail);
     if (act === "pass") return void squadGiftPass().catch(fail);
-    if (act === "jump") return void squadRaceJump().catch(fail);
+    if (act === "jump") return squadRaceJump();
     if (act === "cheer") return squadRaceTap();
     if (act === "start") return void run(() => squadStartMatch());
     // 放: one a second, as the server takes them

@@ -27,6 +27,9 @@ export class SquadRefused extends WorldError {
 /** The server not reached, or too busy to answer: the network, too many asks (429), its own trouble (5xx); worth asking again later */
 export class SquadUnreached extends WorldError {}
 
+/** A racer's report in 企鹅物流急件赛 (squadMode.ts RACE_REPORT_MS) */
+export type RaceReportBody = { taps: [number, number][]; jumps: number[]; in?: true };
+
 async function call<R>(op: string, init: RequestInit): Promise<R> {
   let res: Response;
   try {
@@ -124,8 +127,15 @@ export const squadApi = {
   answer: (n: number, pick: number, at: number) => call<QuizAnswered>("answer", post({ n, pick, at })),
   /** W 的礼物: 传, the gift in your hands on to the next seat, at the server's clock as this page has it; its time as taken */
   pass: (at: number) => call<{ now: number; at: number }>("pass", post({ at })),
-  /** 企鹅物流急件赛: 加油 (tap: how many since the last) or 跳 (jump), at the server's clock as this page has it; as taken */
-  run: (body: { tap: number; at: number } | { jump: true; at: number }) => call<{ now: number; h: number; tap?: [number, number]; jump?: number }>("run", post(body)),
+  /**
+   * 企鹅物流急件赛: your 加油 counts ([at, n] by the quarter second) and 跳s (at) since the last report, on the server's
+   * clock as this page has it (in: you are in by this page's count); what was kept of them
+   */
+  run: (body: RaceReportBody) => call<{ now: number; taps: [number, number][]; jumps: number[] }>("run", post(body)),
+  /** The same as the page goes (hidden or closed): sent on its own, nothing read back */
+  runAway: (body: RaceReportBody) => {
+    apiFetch("/api/squad/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
+  },
   /**
    * 基建加盖: 放 your roach on the room's tower, at the server's clock as this page has it, in the round this page has;
    * the tower's height after it, where it went, whether it fell or sways, the swing's start after it, the room's highest

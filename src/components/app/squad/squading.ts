@@ -33,7 +33,13 @@ import {
   danceEnds,
   isMatchKind,
   LOBBY_ASK_AGAIN_MS,
+  RACE_CELL_MS,
+  RACE_MAX_MS,
+  RACE_REPORT_JUMPS,
+  RACE_REPORT_MS,
+  RACE_REPORT_TAPS,
   RACE_TAPS_MAX,
+  raceRun,
   STACK_GEAR_EVERY,
   STACK_TOP,
   stackPut,
@@ -449,7 +455,8 @@ export async function loadSquadRoom(): Promise<SquadRoom | null> {
         if (r) clocked(r.now, sent, Date.now());
         // out of it for being 暂离 too long while this page was away: said as it comes back
         if (!r && res.out === "away" && room.get()) over(T.squad.afk.out);
-        else setRoom(r);
+        else setRoom(withOwnRace(r));
+        if (r) raceSeenAll(r);
       } while (again);
       roomRead();
       if (r) hereSoon();
@@ -528,10 +535,12 @@ export function squadHereLoop() {
       hereSoon();
     } else {
       hereAt = 0;
+      raceAway();
       squadApi.away();
     }
   };
   const onHide = () => {
+    raceAway();
     if (room.get()) squadApi.away();
   };
   const timer = window.setInterval(() => {
@@ -666,18 +675,22 @@ export function heardSquad(raw: unknown) {
     if (lost) void loadSquadRoom().catch(() => {});
     return;
   }
+  // 企鹅物流急件赛: the others' reports into their lanes (each once; yours are in already), known up to the server's now then
   if (tell.t === "race") {
     const mode = r.mode;
     if (mode?.kind !== "race" || mode.wait) return;
     const lanes = mode.lanes.map((l) => {
-      const mine = tell.items.filter((x) => x.h === l.h && x.h !== r.you);
-      if (!mine.length) return l;
+      const theirs = tell.items.filter((x) => x.h === l.h && x.h !== r.you);
+      if (!theirs.length) return l;
+      const taps = new Set(l.taps.map(([at]) => at));
+      const jumps = new Set(l.jumps);
       return {
         ...l,
-        taps: [...l.taps, ...mine.flatMap((x) => (x.tap ? [x.tap] : []))],
-        jumps: [...l.jumps, ...mine.flatMap((x) => (x.jump === undefined ? [] : [x.jump]))],
+        taps: [...l.taps, ...theirs.flatMap((x) => x.taps).filter(([at]) => !taps.has(at))],
+        jumps: [...l.jumps, ...theirs.flatMap((x) => x.jumps).filter((at) => !jumps.has(at))],
       };
     });
+    for (const x of tell.items) if (x.h !== r.you) raceSeenAt(mode.start, x.h, x.upTo);
     room.set(withWant({ ...r, mode: { ...mode, lanes } }));
     return;
   }
@@ -948,6 +961,7 @@ export async function squadOpenMode(kind: SquadModeKind) {
  * 去围观; a match's 不玩了), the card left open. Either way, not asked to join it again.
  */
 export async function squadModeIn(into: boolean) {
+  if (!into) await squadRaceFlush().catch(() => {});
   await timed(() => squadApi.modeIn(into));
   danceJudge.set(null);
   const r = await loadSquadRoom();
@@ -1035,10 +1049,51 @@ export async function squadGiftPass() {
   }
 }
 
-/** 企鹅物流急件赛's 加油 since the last sent, sent every RACE_SEND_MS (a lane's run counts them by the second) */
-const RACE_SEND_MS = 250;
+/**
+ * 企鹅物流急件赛 on this page (squadMode.ts RACE_REPORT_MS): your 加油 counted by the quarter second (RACE_CELL_MS) and
+ * your 跳s, each in your own lane at once (your roach runs on them), kept here till the server has them: sent every
+ * RACE_REPORT_MS, and at once as your roach signs in (in), its time is up, you leave the race, or the page goes. A
+ * report that failed is kept for the next (the room not read again for it); one refused for good (the race over, you
+ * out of it) is dropped. The room read again, those the server has not got yet go back into your lane.
+ */
+type RaceOwn = { start: number; taps: [number, number][]; jumps: number[]; sending: boolean; lastSent: number; inDue: boolean; inSaid: boolean };
+let raceOwn: RaceOwn | null = null;
 let raceTaps = 0;
-let raceTimer = 0;
+let raceCellTimer = 0;
+let raceReportTimer = 0;
+let raceTickTimer = 0;
+
+/** The race playing with a lane of yours: the room, the race and your lane's place */
+function raceMine() {
+  const r = room.get();
+  const mode = r?.mode;
+  if (!r || mode?.kind !== "race" || mode.wait) return null;
+  const i = mode.lanes.findIndex((l) => l.h === r.you);
+  return i < 0 ? null : { r, mode, i };
+}
+
+/** What you did in this race, not yet with the server (a new race: begun anew) */
+function raceQueue(start: number): RaceOwn {
+  if (raceOwn?.start !== start) raceOwn = { start, taps: [], jumps: [], sending: false, lastSent: 0, inDue: false, inSaid: false };
+  return raceOwn;
+}
+
+/**
+ * The others' lanes in the race playing, as far as this page knows them: up to the server's now as each report of theirs
+ * was told (upTo), or as the room was read. SquadRace.tsx runs them on from there at their last second's pace.
+ */
+let raceSeen: { start: number; upTo: Map<number, number> } | null = null;
+function raceSeenAt(start: number, h: number, upTo: number) {
+  if (raceSeen?.start !== start) raceSeen = { start, upTo: new Map() };
+  raceSeen.upTo.set(h, Math.max(upTo, raceSeen.upTo.get(h) ?? 0));
+}
+function raceSeenAll(r: SquadRoom) {
+  const mode = r.mode;
+  if (mode?.kind !== "race" || mode.wait) return;
+  for (const l of mode.lanes) if (l.h >= 0 && l.h !== r.you) raceSeenAt(mode.start, l.h, r.now);
+}
+/** Up to when (the server's clock) another's lane in the race starting at start is known; its start when not yet */
+export const squadRaceSeen = (start: number, h: number) => (raceSeen?.start === start ? (raceSeen.upTo.get(h) ?? start) : start);
 
 /** Your own lane in the race playing, what you did added at once (as the server will take it) */
 function ownLane(add: { tap?: [number, number]; jump?: number }) {
@@ -1051,30 +1106,121 @@ function ownLane(add: { tap?: [number, number]; jump?: number }) {
   room.set(withWant({ ...r, mode: { ...mode, lanes } }));
 }
 
-/** 加油: counted here, sent with the others of the next quarter second (your lane runs on them as they go) */
-export function squadRaceTap() {
-  raceTaps += 1;
-  if (raceTimer) return;
-  raceTimer = window.setTimeout(() => {
-    raceTimer = 0;
-    const n = Math.min(RACE_TAPS_MAX, raceTaps);
-    raceTaps = 0;
-    const at = squadServerNow();
-    ownLane({ tap: [at, n] });
-    timed(() => squadApi.run({ tap: n, at })).catch(() => void loadSquadRoom().catch(() => {}));
-  }, RACE_SEND_MS);
+/** The room as the server has it, your lane with what you did that the server has not got yet (each once) */
+function withOwnRace(r: SquadRoom | null): SquadRoom | null {
+  const q = raceOwn;
+  const mode = r?.mode;
+  if (!r || !q || mode?.kind !== "race" || mode.wait || mode.start !== q.start || (!q.taps.length && !q.jumps.length)) return r;
+  const lanes = mode.lanes.map((l) => {
+    if (l.h !== r.you) return l;
+    const taps = new Set(l.taps.map(([at]) => at));
+    const jumps = new Set(l.jumps);
+    return { ...l, taps: [...l.taps, ...q.taps.filter(([at]) => !taps.has(at))], jumps: [...l.jumps, ...q.jumps.filter((at) => !jumps.has(at))] };
+  });
+  return { ...r, mode: { ...mode, lanes } };
 }
 
-/** 跳, now on the server's clock as this page has it: your roach in the air at once; refused, the room read again */
-export async function squadRaceJump() {
-  const at = squadServerNow();
-  ownLane({ jump: at });
+/** The next report: at once when the last went RACE_REPORT_MS ago or more, else then */
+function raceSoon() {
+  const q = raceOwn;
+  if (!q || raceReportTimer || q.sending) return;
+  raceReportTimer = window.setTimeout(() => void raceReport(), Math.max(0, q.lastSent + RACE_REPORT_MS - Date.now()));
+}
+
+/** What you did since the last report, sent (RACE_REPORT_TAPS counts and RACE_REPORT_JUMPS 跳s at most; the rest next) */
+async function raceReport() {
+  window.clearTimeout(raceReportTimer);
+  raceReportTimer = 0;
+  const q = raceOwn;
+  if (!q || q.sending) return;
+  const inNow = q.inDue && !q.inSaid;
+  if (!q.taps.length && !q.jumps.length && !inNow) return;
+  const taps = q.taps.slice(0, RACE_REPORT_TAPS);
+  const jumps = q.jumps.slice(0, RACE_REPORT_JUMPS);
+  const all = taps.length === q.taps.length && jumps.length === q.jumps.length;
+  const body = { taps, jumps, ...(inNow && all ? { in: true as const } : {}) };
+  q.sending = true;
+  q.lastSent = Date.now();
   try {
-    return await timed(() => squadApi.run({ jump: true, at }));
+    await timed(() => squadApi.run(body));
+    q.taps.splice(0, taps.length);
+    q.jumps.splice(0, jumps.length);
+    if (body.in) q.inSaid = true;
   } catch (e) {
-    void loadSquadRoom().catch(() => {});
-    throw e;
+    // refused for good: nothing of this race to send any more
+    if (!(e instanceof SquadUnreached) && raceOwn === q) raceOwn = null;
+  } finally {
+    q.sending = false;
   }
+  if (raceOwn === q && (q.taps.length || q.jumps.length || (q.inDue && !q.inSaid))) {
+    // what is left of a report too big, or in, at once; the rest in time
+    if (!all || (q.inDue && !q.inSaid)) void raceReport();
+    else raceSoon();
+  }
+}
+
+/** Each quarter second while you race: your roach in (reported at once, in), or its time up (all that is left, at once) */
+function raceTick() {
+  raceTickTimer = 0;
+  const m = raceMine();
+  const q = raceOwn;
+  if (!m || !q || m.mode.start !== q.start || m.mode.end) return;
+  const now = squadServerNow();
+  if (!q.inDue && raceRun(m.mode, now).done[m.i] !== null) {
+    q.inDue = true;
+    void raceReport();
+    return;
+  }
+  if (now >= q.start + RACE_MAX_MS) return void raceReport();
+  raceTickTimer = window.setTimeout(raceTick, RACE_CELL_MS);
+}
+
+/** Something of yours in the race: kept, your roach on it at once, its report in time, the race looked at as it goes */
+function raceDid(m: NonNullable<ReturnType<typeof raceMine>>, add: { tap?: [number, number]; jump?: number }) {
+  const q = raceQueue(m.mode.start);
+  ownLane(add);
+  if (add.tap) q.taps.push(add.tap);
+  if (add.jump !== undefined) q.jumps.push(add.jump);
+  raceSoon();
+  if (!raceTickTimer) raceTick();
+}
+
+/** 加油: counted here, the quarter second's count in your lane as it is up (and reported with the others in time) */
+export function squadRaceTap() {
+  raceTaps += 1;
+  if (raceCellTimer) return;
+  raceCellTimer = window.setTimeout(() => {
+    raceCellTimer = 0;
+    const n = Math.min(RACE_TAPS_MAX, raceTaps);
+    raceTaps = 0;
+    const m = raceMine();
+    if (m && n > 0) raceDid(m, { tap: [squadServerNow(), n] });
+  }, RACE_CELL_MS);
+}
+
+/** 跳, now on the server's clock as this page has it: your roach in the air at once (not while it still is: it counts for nothing) */
+export function squadRaceJump() {
+  const m = raceMine();
+  if (!m) return;
+  const at = squadServerNow();
+  if (raceRun(m.mode, at).air[m.i]) return;
+  raceDid(m, { jump: at });
+}
+
+/** All that is left of your race sent now (you leave it), waited for */
+export async function squadRaceFlush() {
+  if (raceOwn?.sending) await new Promise((done) => window.setTimeout(done, 300));
+  await raceReport();
+}
+
+/** The page going (hidden or closed): what is left sent on its own, as it goes */
+function raceAway() {
+  const q = raceOwn;
+  if (!q || q.sending || (!q.taps.length && !q.jumps.length)) return;
+  const body = { taps: q.taps.splice(0, RACE_REPORT_TAPS), jumps: q.jumps.splice(0, RACE_REPORT_JUMPS), ...(q.inDue && !q.inSaid ? { in: true as const } : {}) };
+  if (body.in) q.inSaid = true;
+  q.lastSent = Date.now();
+  squadApi.runAway(body);
 }
 
 /**
@@ -1249,8 +1395,10 @@ export function forgetSquadPage() {
   hereAt = 0;
   roundWant = null;
   raceTaps = 0;
-  if (raceTimer) window.clearTimeout(raceTimer);
-  raceTimer = 0;
+  for (const t of [raceCellTimer, raceReportTimer, raceTickTimer]) if (t) window.clearTimeout(t);
+  raceCellTimer = raceReportTimer = raceTickTimer = 0;
+  raceOwn = null;
+  raceSeen = null;
   window.clearTimeout(roundTimer);
   talkOpen.set(false);
   setRoom(null);

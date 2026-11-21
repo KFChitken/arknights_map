@@ -82,7 +82,7 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST question {n}             凯尔希随堂测 (src/lib/server/squadQuiz.ts): question n's three, and its picture or song
  *   POST answer {n, pick, at?}    凯尔希随堂测: an answer to question n, at the server's clock as the page has it
  *   POST pass {at?}               传: W 的礼物 on from your seat
- *   POST run {tap?, jump?, at?}   企鹅物流急件赛: 加油 counts (tap) or 跳 (jump)
+ *   POST run {taps, jumps, in?}   企鹅物流急件赛: a racer's 加油 counts and 跳s since their last (every 2 s; in: they are in)
  *   POST stack {do, round, at?}   基建加盖 (src/lib/server/squadStack.ts): 放 your roach on the room's tower (drop)
  *   POST stackboard {week}        基建周榜 (src/lib/server/stackBoard.ts): this week's or last week's, and your towers on it
  *   POST here                     暂离 (src/lib/server/squad.ts): your page is here, in view (every few minutes)
@@ -133,7 +133,7 @@ const OPS = {
   question: { method: "POST", perMinute: 40 },
   answer: { method: "POST", perMinute: 40 },
   pass: { method: "POST", perMinute: 120 },
-  run: { method: "POST", perMinute: 600 },
+  run: { method: "POST", perMinute: 60 },
   stack: { method: "POST", perMinute: 120 },
   stackboard: { method: "POST", perMinute: 30 },
   here: { method: "POST", perMinute: 6 },

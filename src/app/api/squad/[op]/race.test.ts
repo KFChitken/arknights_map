@@ -6,7 +6,7 @@ import type { SquadRoom } from "@/lib/squad";
 import type { LobbyMode } from "@/lib/squadMode";
 import {
   RACE_CROWN_MS,
-  RACE_JUMP_MS,
+  RACE_LATE_MS,
   RACE_LEAD_MS,
   RACE_MAX_MS,
   RACE_RESULT_MS,
@@ -24,7 +24,7 @@ import { listenInvites, listenMembers, listenNow, listenRooms, sessions, siteSet
 import { loadSettings } from "@/lib/server/siteSettings";
 import { loadSongs } from "@/lib/server/songs";
 import { flushSaysNow, forgetSquad } from "@/lib/server/squad";
-import { forgetDanceBeats, openMode, settleRaceRoom, startMatch, sweepModes } from "@/lib/server/squadModes";
+import { forgetDanceBeats, openMode, runRace, settleRaceDue, settleRaceRoom, startMatch, sweepModes } from "@/lib/server/squadModes";
 import { forgetRace } from "@/lib/server/squadRace";
 import { flushRacesNow } from "@/lib/server/squad";
 import { POST } from "./route";
@@ -204,33 +204,119 @@ describe("企鹅物流急件赛", () => {
     expect(later.in.map((m) => m.h)).not.toContain(1);
   });
 
-  it("takes 加油 counts and 跳s from those in it on the server's clock, tells the room each quarter second, refuses the rest", async () => {
+  it("keeps a racer's reports in their lane on the server's clock, tells the room each quarter second how far each is known, refuses the rest", async () => {
     const { host, a, room } = await cast();
     await play(a);
     const aH = handleOf(await viewOf(a), "a");
     const { start } = await raceOf(a);
-    expect(await post(a, "run", { tap: 3 })).toMatchObject({ status: 409, body: { error: "还没开跑。" } });
+    expect(await post(a, "run", { taps: [[start, 3]], jumps: [] })).toMatchObject({ status: 409, body: { error: "还没开跑。" } });
     const heard = told(host);
-    at(start + 500);
-    expect(await post(a, "run", { tap: 9, at: start + 400 })).toMatchObject({ status: 200, body: { h: aH, tap: [start + 400, 6] } });
-    expect(await post(a, "run", { jump: true })).toMatchObject({ status: 200, body: { jump: start + 500 } });
-    at(start + 600);
-    expect(await post(a, "run", { jump: true })).toMatchObject({ status: 409, body: { error: "还在空中。" } });
-    at(start + 500 + RACE_JUMP_MS);
-    expect((await post(a, "run", { jump: true })).status).toBe(200);
+    at(start + 2_500);
+    // counts rounded into 1..6; one too long ago (or not yet) taken as now; those before the start dropped
+    expect(
+      await post(a, "run", {
+        taps: [
+          [start + 400, 9],
+          [start + 600, 0.4],
+          [start - 100, 2],
+          [start - 9_000, 1],
+        ],
+        jumps: [start + 500],
+      }),
+    ).toMatchObject({ status: 200, body: { taps: [[start + 400, 6], [start + 600, 1], [start + 2_500, 1]], jumps: [start + 500] } });
+    // a 跳 while still in the air: kept, counting for nothing (the rule's: squadMode.ts raceJumps)
+    at(start + 2_600);
+    expect((await post(a, "run", { taps: [], jumps: [start + 600] })).status).toBe(200);
     await flushRacesNow();
     expect(heard).toContainEqual({
       t: "race",
       room: room.id,
       items: [
-        { h: aH, tap: [start + 400, 6] },
-        { h: aH, jump: start + 500 },
-        { h: aH, jump: start + 500 + RACE_JUMP_MS },
+        { h: aH, taps: [[start + 400, 6], [start + 600, 1], [start + 2_500, 1]], jumps: [start + 500], upTo: start + 2_500 },
+        { h: aH, taps: [], jumps: [start + 600], upTo: start + 2_600 },
       ],
     });
-    expect((await raceOf(a)).lanes[0]).toEqual({ h: aH, taps: [[start + 400, 6]], jumps: [start + 500, start + 500 + RACE_JUMP_MS] });
+    const data = await dataOf(room.id);
+    expect(data.lanes[0]).toEqual({ h: aH, taps: [[start + 400, 6], [start + 600, 1], [start + 2_500, 1]], jumps: [start + 500, start + 600] });
+    const once = { ...data, lanes: data.lanes.map((l, i) => (i ? l : { ...l, jumps: [start + 500] })) };
+    expect(raceRun(data, start + 5_000)).toEqual(raceRun(once, start + 5_000));
+    // too many at once, or not as asked
+    expect(await post(a, "run", { taps: Array.from({ length: 17 }, () => [start + 2_600, 1]), jumps: [] })).toMatchObject({ status: 400 });
+    expect(await post(a, "run", { taps: [[start + 2_600, "2"]], jumps: [] })).toMatchObject({ status: 400 });
+    expect(await post(a, "run", { taps: [], jumps: Array.from({ length: 9 }, () => start + 2_600) })).toMatchObject({ status: 400 });
     // the host is in the room, not in it
-    expect(await post(host, "run", { tap: 1 })).toMatchObject({ status: 409, body: { error: "先加入才能跑。" } });
+    expect(await post(host, "run", { taps: [[start + 2_600, 1]], jumps: [] })).toMatchObject({ status: 409, body: { error: "先加入才能跑。" } });
+  });
+
+  it("comes to the same lane and run with eight counts at once or one at a time, and keeps two racers reporting at once", async () => {
+    const { a, b, room } = await cast();
+    await play(a, [b]);
+    const v = await viewOf(a);
+    const [aH, bH] = [handleOf(v, "a"), handleOf(v, "b")];
+    const { start } = await raceOf(a);
+    at(start + 2_000);
+    const cells = Array.from({ length: 8 }, (_, k): [number, number] => [start + k * 250, 1 + (k % 3)]);
+    expect((await post(a, "run", { taps: cells, jumps: [start + 300] })).status).toBe(200);
+    for (const [k, cell] of cells.entries()) expect((await post(b, "run", { taps: [cell], jumps: k === 1 ? [start + 300] : [] })).status).toBe(200);
+    const data = await dataOf(room.id);
+    const ia = data.lanes.findIndex((l) => l.h === aH);
+    const ib = data.lanes.findIndex((l) => l.h === bH);
+    expect(data.lanes[ib].taps).toEqual(data.lanes[ia].taps);
+    expect(data.lanes[ib].jumps).toEqual(data.lanes[ia].jumps);
+    const run = raceRun(data, start + 6_000);
+    expect(run.x[ib]).toBe(run.x[ia]);
+    expect(run.x[ia]).toBeGreaterThan(0);
+    // both at once: neither lost
+    at(start + 2_500);
+    await Promise.all([runRace(a, { taps: [[start + 2_250, 2]], jumps: [] }, clock), runRace(b, { taps: [[start + 2_300, 3]], jumps: [start + 2_300] }, clock)]);
+    const after = await dataOf(room.id);
+    expect(after.lanes[ia].taps.at(-1)).toEqual([start + 2_250, 2]);
+    expect(after.lanes[ib].taps.at(-1)).toEqual([start + 2_300, 3]);
+    expect(after.lanes[ib].jumps.at(-1)).toBe(start + 2_300);
+  });
+
+  it("drops what came after its time, settles at once as one says they are in with everyone in, then refuses more", async () => {
+    const { a, b, room } = await cast();
+    await play(a, [b]);
+    const data = await dataOf(room.id);
+    const { start } = data;
+    // its time up a moment ago: what came before its end kept, what after dropped; not settled for the last reports yet
+    at(start + RACE_MAX_MS + 1_000);
+    expect(
+      await post(a, "run", {
+        taps: [
+          [start + RACE_MAX_MS - 250, 2],
+          [start + RACE_MAX_MS + 500, 2],
+        ],
+        jumps: [],
+      }),
+    ).toMatchObject({ status: 200, body: { taps: [[start + RACE_MAX_MS - 250, 2]] } });
+    expect(await settleRaceDue(room.id, clock)).toEqual({ over: false, ended: false });
+    expect((await raceOf(a)).end).toBeUndefined();
+    at(start + RACE_MAX_MS + RACE_LATE_MS);
+    await settleRaceDue(room.id, clock);
+    expect((await raceOf(a)).end).toMatchObject({ at: start + RACE_MAX_MS });
+    expect(await post(a, "run", { taps: [], jumps: [] })).toMatchObject({ status: 409, body: { error: "这一场已经跑完了。" } });
+  });
+
+  it("settles as the last one in says so (in), not before everyone is", async () => {
+    const { a, b, room } = await cast();
+    await play(a, [b]);
+    const data = await dataOf(room.id);
+    const { start } = data;
+    // a and b flat out from the start, as reported
+    for (const i of [0, 1]) data.lanes[i].taps = flatOut(start).filter(([t]) => t < start + RACE_MAX_MS);
+    await setData(room.id, data);
+    const run = raceRun(data, start + RACE_MAX_MS);
+    expect(run.done.every((d) => d !== null)).toBe(true);
+    const last = Math.max(...run.done.map((d) => d!));
+    // before the last is in: in says nothing yet
+    at(start + Math.min(...run.done.map((d) => d!)) + 50);
+    expect((await post(a, "run", { taps: [], jumps: [], in: true })).status).toBe(200);
+    expect((await raceOf(a)).end).toBeUndefined();
+    at(start + last + 50);
+    expect((await post(b, "run", { taps: [], jumps: [], in: true })).status).toBe(200);
+    expect((await raceOf(a)).end).toMatchObject({ at: start + last, order: raceOrder(run) });
   });
 
   it("settles the order once all are in, the first wearing the crown with two or more playing, and waits again after the results", async () => {
@@ -251,7 +337,10 @@ describe("企鹅物流急件赛", () => {
     expect(await settleRaceRoom(room.id, clock)).toEqual({ over: false, ended: false });
     expect((await raceOf(a)).end).toBeUndefined();
     const heard = told(b);
+    // its time up: the last reports waited for a moment
     at(data.start + RACE_MAX_MS + 100);
+    expect(await settleRaceRoom(room.id, clock)).toEqual({ over: false, ended: false });
+    at(data.start + RACE_MAX_MS + RACE_LATE_MS);
     await settleRaceRoom(room.id, clock);
     const ended = await raceOf(a);
     expect(ended.end).toEqual({ at: data.start + RACE_MAX_MS, order, times: run.done, metres: run.x.map((m) => Math.round(m * 10) / 10) });
@@ -262,7 +351,7 @@ describe("企鹅物流急件赛", () => {
     else expect(await headOf(b, "a")).toBeUndefined();
     expect(await headOf(a, "b")).toBeUndefined();
     // over: no more
-    expect(await post(a, "run", { tap: 1 })).toMatchObject({ status: 409 });
+    expect(await post(a, "run", { taps: [[clock, 1]], jumps: [] })).toMatchObject({ status: 409 });
     // its end: waiting again, both still ready, a its initiator, a round played
     at(ended.until + 1);
     expect(await sweepModes(clock)).toBe(1);
