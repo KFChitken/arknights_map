@@ -80,15 +80,15 @@ import { cardsOf, declare, friendIdsOf, friendKey, profileOf, touch } from "./wo
  * room does goes to the phones in it at once, with what happened in it (live.ts tellListen): its songs (never anything
  * of who), that who is in it changed (each phone asks again, as each sees the others its own way), the 短评 of the last
  * second, and that it ended. 短评 are never written down. Its songs never run out: one playing the last of them is given
- * another at the end, at random (toppedUp, as the host changes them and every minute). Whoever in it but its host does
- * nothing in it IDLE_MS as it plays is out of it, alone (sweepIdle). A room ends when its host ends or leaves it, goes
- * off for more than AWAY_MS, opens another or goes in at another; when its host has been alone in it ALONE_MS
- * (alone_since: nobody came, or all who did left), its songs have been over ROOM_IDLE_MS (none could be added in time),
- * nobody is left, or it has gone on ROOM_LIFE_MS; and every room ends when 听歌 is paused in the 管理台 or the site goes
- * gray. Whoever was in a room that ended (but by the 管理台 or 全站变灰) goes on with its song alone, on their own page
- * (src/components/app/listening.ts). ROOM_KEEP_MS after, the room, who was in it and the invitations to it are deleted.
- * Your 触须之交 see what you listen to while you let them (show_listening: friendsListening), and may ask you to invite
- * them (想一起听: askToListen, answerAsk).
+ * another at the end, at random (toppedUp, as the host changes them and every minute). A room ends when its host ends
+ * or leaves it, goes off for more than AWAY_MS, does nothing in it IDLE_MS as it plays (sweepIdle: anyone else is out of
+ * it so, alone), opens another or goes in at another; when its host has been alone in it ALONE_MS (alone_since: nobody
+ * came, or all who did left), its songs have been over ROOM_IDLE_MS (none could be added in time), nobody is left, or it
+ * has gone on ROOM_LIFE_MS; and every room ends when 听歌 is paused in the 管理台 or the site goes gray. Whoever was in a
+ * room that ended (but by the 管理台 or 全站变灰) goes on with its song alone, on their own page
+ * (src/components/app/listening.ts). ROOM_KEEP_MS
+ * after, the room, who was in it and the invitations to it are deleted. Your 触须之交 see what you listen to while you
+ * let them (show_listening: friendsListening), and may ask you to invite them (想一起听: askToListen, answerAsk).
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1481,9 +1481,10 @@ const idleSince = (since: Date) =>
   );
 
 /**
- * Those in a room as it plays (started, and not over) who did nothing in it IDLE_MS, nor played its songs (did_at), but
- * its host: out of it, told so alone (you, idle) and kept so (lapsed), for their page to be told again as it asks
- * (myRoom), and the room told who is in it changed. Those whose page went are AWAY_MS's. Says how many rooms ended so.
+ * Those in a room as it plays (started, and not over) who did nothing in it IDLE_MS, nor played its songs (did_at):
+ * out of it, told so alone (you, idle) and kept so (lapsed), for their page to be told again as it asks (myRoom), and the
+ * room told who is in it changed. A host's room ends with them, as when they go off: told the others as that (host).
+ * Those whose page went are AWAY_MS's. Says how many rooms ended.
  */
 async function sweepIdle(now: number): Promise<number> {
   const since = new Date(now - IDLE_MS);
@@ -1491,7 +1492,7 @@ async function sweepIdle(now: number): Promise<number> {
     .select({ room: listenRooms, userId: listenMembers.userId })
     .from(listenMembers)
     .innerJoin(listenRooms, eq(listenRooms.id, listenMembers.roomId))
-    .where(and(idleSince(since), isNull(listenRooms.endedAt), isNotNull(listenRooms.startedAt), ne(listenMembers.userId, listenRooms.hostId)));
+    .where(and(idleSince(since), isNull(listenRooms.endedAt), isNotNull(listenRooms.startedAt)));
   if (!idle.length) return 0;
   const seconds = await secondsOf();
   let ended = 0;
@@ -1524,12 +1525,12 @@ async function sweepIdle(now: number): Promise<number> {
 }
 
 /**
- * The main process, every minute: those gone off longer than AWAY_MS leave (a host's room ends), as do those but a host
- * who did nothing in a room as it played IDLE_MS (sweepIdle); rooms end that are over (ROOM_IDLE_MS after their last
- * song), empty, older than ROOM_LIFE_MS, their host alone in them ALONE_MS (endAlone), or all of them while 听歌 is
- * paused or the site is gray; a room going on that plays its last song (or whose songs are over) is given one more
- * (topUp); and rooms over for ROOM_KEEP_MS go, with who was in them and the invitations to them. A host alone in a room
- * not counted so (two going at once: each saw the other still in) is from now. Says how many ended.
+ * The main process, every minute: those gone off longer than AWAY_MS leave (a host's room ends), as do those who did
+ * nothing in a room as it played IDLE_MS (sweepIdle); rooms end that are over (ROOM_IDLE_MS after their last song),
+ * empty, older than ROOM_LIFE_MS, their host alone in them ALONE_MS (endAlone), or all of them while 听歌 is paused or
+ * the site is gray; a room going on that plays its last song (or whose songs are over) is given one more (topUp); and
+ * rooms over for ROOM_KEEP_MS go, with who was in them and the invitations to them. A host alone in a room not counted
+ * so (two going at once: each saw the other still in) is from now. Says how many ended.
  */
 export async function sweepRooms(now = Date.now()) {
   const away = await db

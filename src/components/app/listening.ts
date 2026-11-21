@@ -2076,8 +2076,8 @@ export function heardListen(raw: unknown) {
 
 /**
  * How one is out of a room: it ended (RoomEnd: why), you left it (leave), its host asked you to (kicked), you are out by
- * blocking its host (parted), you did nothing in it IDLE_MS as it played (lapsed), or it was found over (gone: it ended
- * while the page was not told)
+ * blocking its host (parted), you did nothing in it IDLE_MS as it played (lapsed: a host's ended with it), or it was
+ * found over (gone: it ended while the page was not told)
  */
 type Out = RoomEnd | "leave" | "kicked" | "parted" | "lapsed" | "gone";
 

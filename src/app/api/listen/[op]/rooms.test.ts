@@ -1312,15 +1312,22 @@ describe("一起听's 人走了", () => {
     expect(await inNow(room.id)).toEqual([host.id]);
   });
 
-  it("keep a host who does nothing in it 10 minutes as it plays: TA's room goes on, TA in it", async () => {
+  it("end the room of a host who does nothing in it 10 minutes as it plays, as when TA goes off: TA told TA is out, the others it ended", async () => {
     const { host, b, c, room, t0 } = await playingRoom();
     const hostHeard = hear(host);
+    const bHeard = hear(b);
     // B and C play along; the host paused at once
     const along = playing(room.id, b, c);
-    expect(await minutes(t0, t0 + 2 * IDLE_MS, along)).toBe(0);
-    expect(new Set(await inNow(room.id))).toEqual(new Set([host.id, b.id, c.id]));
-    expect(await roomRow(room.id)).toMatchObject({ endedAt: null });
-    expect(toldOf(hostHeard, "you")).toEqual([]);
+    expect(await minutes(t0, t0 + IDLE_MS - 1_000, along)).toBe(0);
+    expect(await minutes(t0 + IDLE_MS + 1_000, t0 + IDLE_MS + 1_000, along)).toBe(1);
+    expect(await roomRow(room.id)).toMatchObject({ endReason: "host" });
+    expect(await inNow(room.id)).toEqual([]);
+    expect(toldOf(bHeard, "end")).toEqual([{ t: "end", room: room.id, why: "host" }]);
+    expect(toldOf(bHeard, "you")).toEqual([]);
+    expect(toldOf(hostHeard, "end")).toEqual([]);
+    expect(toldOf(hostHeard, "you")).toEqual([{ t: "you", room: room.id, why: "idle" }]);
+    expect((await post(host, "room", { was: room.id })).body).toMatchObject({ room: null, out: "idle" });
+    expect((await post(b, "room", { was: room.id })).body).toEqual({ room: null, now: Date.now() });
   });
 
   it("take nobody out before the host starts it; starting it gives everyone in it 10 minutes from then", async () => {
