@@ -10,6 +10,7 @@ import { ShieldIcon } from "../chrome/parts";
 import { useOperatorArt } from "../OperatorNames";
 import { useAbove, useWide } from "./SquadBar";
 import SmallFlame from "./SmallFlame";
+import SmallTower from "./SmallTower";
 import SquadMateCard from "./SquadMateCard";
 import SquadPipButton from "./SquadPipButton";
 import { ListenAsk, ListenNote } from "./SquadListen";
@@ -360,6 +361,7 @@ export default function SquadFight({
         <span className="nm">
           {m.name}
           {m.fireTop && <SmallFlame label={T.lib.badges.firewatch.name} />}
+          {m.stackTop && <SmallTower label={T.lib.badges.stacktop.name} />}
         </span>
         <span className="cr">
           <CoreBadge core={m.core} />

@@ -242,3 +242,13 @@
 .sq-fire .fb-title-head i { color: #e8e2f8; font-size: 11.5px; }
 .sq-fire .fb-title ol { margin: 0; padding-left: 1.4em; display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; }
 .sq-fire .fb-title .note { margin: 0; padding: 8px 10px; border-radius: 10px; background: #f6f7f9; color: #4b5160; font-size: 12px; line-height: 1.6; }
+/* ---- 基建周榜 (SquadStackBoard.tsx), in 基建加盖's card's place: 火焰周榜's, in the tower's colours ---- */
+.sq-fire .sb .fb-banner { background: #1f2a44; color: #e9e0ff; }
+.sq-fire .sb .fb-row .lv { background: #1f2a44; color: #d9c8ff; }
+.sq-fire .sb .fb-row .lv .sq-tower { flex: none; }
+.sq-fire .sb .fb-row.mine { background: #f6f3fd; }
+.sq-fire .sb .fb-line::before { border-top-color: #7a4fd0; }
+.sq-fire .sb .fb-line span { color: #5b2fa8; }
+.sq-fire .sb .fb-mine p { color: #1f6b41; }
+.sq-fire .sb .fb-mine.none p { padding-top: 4px; color: #4b5160; font-weight: 400; }
+.sq-fire .sb .fb-title-head { background: linear-gradient(180deg, #2a3656, #1f2a44); }

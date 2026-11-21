@@ -1,5 +1,3 @@
-import { woodIn, woodNow } from "./squadFire";
-
 /**
  * 玩点什么 in a room of 一起卫戍 (卫戍碎片时间玩法 ⑥): one mode at a time, opened by anyone in the room, the others told
  * and free to join or only watch (fishing, throwing, the fire and talking all go on beside it); each ends on its own,
@@ -20,8 +18,8 @@ import { woodIn, woodNow } from "./squadFire";
  * The music is 听歌's (LISTEN), each muting their own; it ends with its song, or DANCE_IDLE_MS after the last tap.
  */
 
-/** The modes there are (⑦ adds them one by one) */
-export const MODE_KINDS = ["dance", "quiz", "gift", "race", "stack"] as const;
+/** The modes there are, one at a time in a room (基建加盖 is the room's own tower, always there beside them) */
+export const MODE_KINDS = ["dance", "quiz", "gift", "race"] as const;
 export type SquadModeKind = (typeof MODE_KINDS)[number];
 export const isModeKind = (v: unknown): v is SquadModeKind => typeof v === "string" && (MODE_KINDS as readonly string[]).includes(v);
 
@@ -82,9 +80,8 @@ export function beatOff(beats: ArrayLike<number>, tMs: number): number {
 
 /** When a dance ends by itself: its song over, or DANCE_IDLE_MS after its last tap, whichever comes first */
 export const danceEnds = (until: number, last: number) => Math.min(until, last + DANCE_IDLE_MS);
-/** When a mode ends by itself: a dance as danceEnds, 基建加盖 STACK_IDLE_MS after the last block put, the others at their end (until) */
-export const modeEnds = (kind: string, until: number, last: number) =>
-  kind === "dance" ? danceEnds(until, last) : kind === "stack" ? Math.min(until, last + STACK_IDLE_MS) : until;
+/** When a mode ends by itself: a dance as danceEnds, the others at their end (until) */
+export const modeEnds = (kind: string, until: number, last: number) => (kind === "dance" ? danceEnds(until, last) : until);
 
 /**
  * The mode a room is playing, as its pages have it (SquadRoom.mode): which, opened by whom (one's number) and when;
@@ -118,20 +115,7 @@ export type GiftMode = RoundBase & { kind: "gift"; song: string; name: string; s
  * the mode's own 人机; once it is over and the server settled it, the order they signed in (RaceEnd)
  */
 export type RaceMode = RoundBase & { kind: "race"; start: number; seed: number; lanes: RaceLane[]; obs: RaceObstacle[]; bots: GiftBot[]; end?: RaceEnd };
-/**
- * 基建加盖: its round (from 1) and when it began, the tower's blocks, how it fell (once it has), the room's highest, and
- * the blocks in your hand (n at `at`, as 篝火's sticks; none while you are not in it)
- */
-export type StackMode = ModeBase & {
-  kind: "stack";
-  round: number;
-  roundAt: number;
-  blocks: StackBlock[];
-  fell?: StackFell;
-  best: number;
-  hand?: { n: number; at: number | null };
-};
-export type SquadMode = DanceMode | QuizMode | GiftMode | RaceMode | StackMode | LobbyMode;
+export type SquadMode = DanceMode | QuizMode | GiftMode | RaceMode | LobbyMode;
 
 // ---- 凯尔希随堂测 ----
 
@@ -554,16 +538,23 @@ export function raceOrder(r: Pick<RaceNow, "x" | "done">): number[] {
 // ---- 基建加盖 ----
 
 /**
- * 基建加盖 (stack): a tower of roaches. Your roach swings over the tower's top, STACK_SWING_PX each way and back each
- * STACK_SWING_MS, the same for everyone on the server's clock; 放 lets it fall where it is (the page's time, taken within
- * STACK_EARLY_MS of the server's). One more than STACK_MISS_PX off the one under it, or a tower whose middle is more than
- * STACK_TIP_PX off the base's, falls: the round is over (its height counted), and anyone may start the next. More than
- * STACK_WOBBLE_PX off, it only sways. Each has a hand held as 篝火's sticks are (squadFire.ts woodNow: STACK_HAND_MAX
- * at most, one more each STACK_HAND_EVERY_MS), full as one first comes in after it opened, and kept from round to round
- * till it ends; the server takes one block each STACK_EVERY_MS from each. STACK_IDLE_MS with no block put (nor a round
- * begun), it is over. The room keeps its highest tower (squad_rooms.stack_best). 人机 put none; nothing is won.
+ * 基建加盖 (the room's tower: always there, not one of the modes, played beside any of them): your roach swings over
+ * the tower's top, STACK_SWING_PX each way and back each stackSwingMs(n) (a little faster each STACK_GEAR_EVERY layers,
+ * twice as fast at most), the same for everyone on the server's clock; 放 lets it fall where it is (the page's time,
+ * taken within STACK_EARLY_MS of the server's). One more than STACK_MISS_PX off the one under it, or a tower whose
+ * middle is more than STACK_TIP_PX off the base's, falls: its round is over (its height counted) and the next begins by
+ * itself STACK_REBUILD_MS later. More than STACK_WOBBLE_PX off, it only sways. Everyone in the room puts blocks as they
+ * like, no turns, no hand to wait for: one each STACK_EVERY_MS each (人机 none). Only its top STACK_TOP blocks are kept
+ * and sent, with how many there are and where their middle is, so a tower costs the same however high. The room keeps
+ * its highest (squad_rooms.stack_best), the week's board its towers (src/lib/server/stackBoard.ts).
  */
 export const STACK_SWING_MS = 1_600;
+/** Each STACK_GEAR_EVERY layers the swing takes STACK_GEAR_SPEED of the time it did, never under STACK_SWING_MIN_MS */
+export const STACK_GEAR_EVERY = 10;
+export const STACK_GEAR_SPEED = 0.9;
+export const STACK_SWING_MIN_MS = 800;
+/** The gears there are, the last the fastest */
+export const STACK_GEARS = 8;
 export const STACK_SWING_PX = 60;
 /** Each block raises the tower this much (px on the page) */
 export const STACK_BLOCK_H = 34;
@@ -571,49 +562,121 @@ export const STACK_MISS_PX = 40;
 export const STACK_TIP_PX = 30;
 export const STACK_WOBBLE_PX = 18;
 export const STACK_EVERY_MS = 1_000;
-export const STACK_HAND_MAX = 3;
-export const STACK_HAND_EVERY_MS = 30_000;
+/** A tower that fell is rebuilt (its next round) this long after */
+export const STACK_REBUILD_MS = 3_000;
+/** The blocks kept and sent from the top of a tower */
+export const STACK_TOP = 12;
+/** One who put a block within this long is building (在搭) */
+export const STACK_BUSY_MS = 30_000;
 /**
  * The tower stays where it is on the page till it is this many blocks high, and then goes down as it grows (the
  * canvas's six would put the swinging roach over the line at the top right)
  */
 export const STACK_SHOWN = 5;
-export const STACK_IDLE_MS = 60_000;
 export const STACK_EARLY_MS = 400;
-/** It is over by this long after it opened at the latest, whatever is put */
-export const STACK_MOST_MS = 3_600_000;
+/** The blocks put are told to the room together this often (as 企鹅物流急件赛's 加油) */
+export const STACK_SEND_MS = 250;
 
 /** A block on the tower: whose roach it is (their number), where it is from the base's middle (px), put when (the server's clock) */
 export type StackBlock = { h: number; x: number; at: number };
 /** A round's end: when the tower fell, and how high it had been */
 export type StackFell = { at: number; height: number };
 /**
- * 基建加盖 as the server keeps it (squad_rooms.mode_data): the round, when it began, its blocks, how it fell, and each
- * one's hand (by number: n at `at`, as 篝火's sticks; their last block's time)
+ * The room's tower as the server keeps it (squad_rooms.stack): its round (from 1) and when it began, how many blocks
+ * and their x added up (its middle), its top STACK_TOP blocks, how it fell (once it has), where its swing starts
+ * (swingAt: moved as it goes faster, see stackShift), and each one's last block (by number, the server's clock)
  */
-export type StackData = { round: number; at: number; blocks: StackBlock[]; fell?: StackFell; hands: Record<string, { n: number; at: number | null; last: number }> };
+export type StackTower = { round: number; at: number; n: number; sum: number; top: StackBlock[]; fell?: StackFell; swingAt: number; last: Record<string, number> };
+/** The tower as the room's pages have it (SquadRoom.stack): as kept, the room's highest (best), and those building (busy: by number) */
+export type SquadStack = Omit<StackTower, "last"> & { best: number; busy: number[] };
 
-/** Where the swinging block is at t (the server's clock) in a round begun at `at`: px from the base's middle */
-export function stackSwing(at: number, t: number): number {
-  const p = (((t - at) % STACK_SWING_MS) + STACK_SWING_MS) % STACK_SWING_MS;
-  return -STACK_SWING_PX * Math.cos((2 * Math.PI * p) / STACK_SWING_MS);
+/** How long the swing takes there and back over a tower n high (ms) */
+export const stackSwingMs = (n: number) => Math.max(STACK_SWING_MIN_MS, Math.round(STACK_SWING_MS * STACK_GEAR_SPEED ** Math.floor(n / STACK_GEAR_EVERY)));
+/** Its gear over a tower n high: 1 to STACK_GEARS */
+export const stackGear = (n: number) => Math.min(STACK_GEARS, Math.floor(n / STACK_GEAR_EVERY) + 1);
+
+/** Where the swinging block is at t (the server's clock) over a tower n high whose swing starts at swingAt: px from the base's middle */
+export function stackSwing(swingAt: number, n: number, t: number): number {
+  const ms = stackSwingMs(n);
+  const p = (((t - swingAt) % ms) + ms) % ms;
+  return -STACK_SWING_PX * Math.cos((2 * Math.PI * p) / ms);
 }
 
-/** A hand as it is now ({n, at} as kept; none yet: a full one), and till the next block grows in it (null: full) */
-export function stackHand(hand: { n: number; at: number | null } | undefined, now: number): { n: number; next: number | null } {
-  const n = hand ? woodNow(hand.n, hand.at, now, STACK_HAND_MAX, STACK_HAND_EVERY_MS) : STACK_HAND_MAX;
-  const next = hand ? woodIn(hand.n, hand.at, now, STACK_HAND_MAX, STACK_HAND_EVERY_MS) : null;
-  return { n, next };
+/**
+ * The swing's start once the tower grows from `from` to `to` blocks at t: where the swing is then stays where it is,
+ * going on from there at its new speed
+ */
+export function stackShift(swingAt: number, from: number, to: number, t: number): number {
+  const was = stackSwingMs(from);
+  const f = ((((t - swingAt) % was) + was) % was) / was;
+  return t - f * stackSwingMs(to);
 }
 
 /** How high the tower stands: its blocks, or as high as it was when it fell (the one that made it fall not counted) */
-export const stackHeight = (s: { blocks: readonly unknown[]; fell?: StackFell }) => (s.fell ? s.fell.height : s.blocks.length);
+export const stackHeight = (s: { n: number; fell?: StackFell }) => (s.fell ? s.fell.height : s.n);
 
-/** A block put at x on a tower: how far off the one under it (the base's middle for the first), and whether the tower falls, or sways */
-export function stackPut(blocks: readonly { x: number }[], x: number): { off: number; falls: boolean; wobbles: boolean } {
-  const under = blocks.length ? blocks[blocks.length - 1].x : 0;
+/**
+ * A block put at x on a tower (n high, its x added up, its top): how far off the one under it (the base's middle for
+ * the first), and whether the tower falls, or sways
+ */
+export function stackPut(tower: { n: number; sum: number; top: readonly { x: number }[] }, x: number): { off: number; falls: boolean; wobbles: boolean } {
+  const under = tower.top.length ? tower.top[tower.top.length - 1].x : 0;
   const off = x - under;
-  const middle = (blocks.reduce((sum, b) => sum + b.x, 0) + x) / (blocks.length + 1);
+  const middle = (tower.sum + x) / (tower.n + 1);
   const falls = Math.abs(off) > STACK_MISS_PX || Math.abs(middle) > STACK_TIP_PX;
   return { off, falls, wobbles: !falls && Math.abs(off) > STACK_WOBBLE_PX };
 }
+
+/**
+ * The tower as it is at `now`: none kept yet, round 1 from the room's opening (opened); one that fell
+ * STACK_REBUILD_MS or more ago, its next round, begun then
+ */
+export function towerNow(kept: StackTower | null, opened: number, now: number): StackTower {
+  if (!kept) return { round: 1, at: opened, n: 0, sum: 0, top: [], swingAt: opened, last: {} };
+  if (kept.fell && now >= kept.fell.at + STACK_REBUILD_MS) {
+    const at = kept.fell.at + STACK_REBUILD_MS;
+    return { round: kept.round + 1, at, n: 0, sum: 0, top: [], swingAt: at, last: kept.last };
+  }
+  return kept;
+}
+
+/** The tower as a page has it, at `now` (the server's clock): one that fell STACK_REBUILD_MS or more ago rebuilt, as towerNow */
+export function stackNow(s: SquadStack, now: number): SquadStack {
+  if (!s.fell || now < s.fell.at + STACK_REBUILD_MS) return s;
+  const at = s.fell.at + STACK_REBUILD_MS;
+  const { fell: _gone, ...rest } = s;
+  void _gone;
+  return { ...rest, round: s.round + 1, at, n: 0, sum: 0, top: [], swingAt: at };
+}
+
+// ---- 基建周榜 ----
+
+/**
+ * 基建周榜 (src/lib/server/stackBoard.ts), as 火焰周榜 (squadFire.ts BOARD_*), its rows towers: one must have put
+ * STACK_BOARD_BLOCKS blocks on a tower to be named on it
+ */
+export const STACK_BOARD_BLOCKS = 5;
+/** A name on 基建周榜, as 火焰周榜's */
+export type StackBoardName = { name: string; look?: { color: string; avatar: string }; you?: true };
+/** A row: a tower's place, how high it got that week, who is named; got: last week's, its named won 基建狂魔; mine: the one pinned for you */
+export type StackBoardRow = { rank: number; peak: number; names: StackBoardName[]; got?: true; mine?: true };
+/**
+ * 你们这座: the tower pinned for the player (the one they are named on this week, else the room's tower now when they
+ * put a block on it), its place (null: not listed), height and names, and the first of these that is so: old (it began
+ * last week: on last week's board), in (named, in the top BOARD_TOP: n named), short (in the top, k blocks more to be
+ * named), below (listed, d layers short of the top), off (not listed)
+ */
+export type StackMine = {
+  rank: number | null;
+  peak: number;
+  names: StackBoardName[];
+  say: "old" | "in" | "short" | "below" | "off";
+  n?: number;
+  k?: number;
+  d?: number;
+};
+/**
+ * 基建周榜 for a page: this week's (left: till it is settled) or last week's as settled; how many win; your tower (null:
+ * none); old: the tower in your room now began last week (what is put on it counts nowhere)
+ */
+export type StackBoard = { week: "this" | "last"; rows: StackBoardRow[]; holders: number; left?: number; mine: StackMine | null; old?: true; now: number };

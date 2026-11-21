@@ -4,19 +4,20 @@ import { useEffect, useState } from "react";
 import { fmt, T } from "@/i18n";
 import type { SquadRoom } from "@/lib/squad";
 import { fireLevel, WOOD_MAX, woodNow } from "@/lib/squadFire";
-import { isMatchKind, MODE_KINDS, type SquadModeKind } from "@/lib/squadMode";
+import { isMatchKind, MODE_KINDS, stackNow, type SquadModeKind } from "@/lib/squadMode";
 import { WorldError } from "@/lib/world/types";
 import { openFishWin, useFishWin } from "../fish/winStore";
-import { openSquadFire, openSquadModeCard, squadModeIn, squadOpenMode, squadServerNow } from "./squading";
+import { openSquadFire, openSquadModeCard, openSquadStack, squadModeIn, squadOpenMode, squadServerNow } from "./squading";
 import "./squadModes.css";
 
 /**
  * 「玩」 in a room of 一起卫戍 (the room's sheet on a phone, the bar's panel on a computer): every game there is, each
- * a tile with its icon and its name, nothing more. 钓鳞's icon shows how its line stands (none in the water, in it, a
- * bite); 添柴's shows the fire (out, small, big, roaring) with its level, and the sticks in your hand. The modes of
- * 玩点什么 (one at a time) open, join or show the one playing as their tile is tapped; one that cannot be opened now
- * says why under the tiles. A match (凯尔希随堂测, W 的礼物, 企鹅物流急件赛) waits for people first: its tile says
- * how many are ready (等人 n/4) and readies you; while a round plays, one not in it asks for the next (下一局).
+ * a tile with its icon and its name, in two groups. Those always there (随时能玩): 钓鳞, its icon showing how its line
+ * stands (none in the water, in it, a bite); 添柴, the fire (out, small, big, roaring) with its level and the sticks
+ * in your hand; 基建加盖, the room's tower with its height. Then the modes of 玩点什么, one at a time: they open, join
+ * or show the one playing as their tile is tapped; one that cannot be opened now says why under the tiles. A match
+ * (凯尔希随堂测, W 的礼物, 企鹅物流急件赛) waits for people first: its tile says how many are ready (等人 n/4) and readies
+ * you; while a round plays, one not in it asks for the next (下一局).
  */
 
 /**
@@ -132,18 +133,6 @@ export function ModePlayIcon({ kind }: { kind: SquadModeKind }) {
         <path d="M31 21.5l2.2 2.2-2.2 2.2" fill="none" stroke="#1b1d22" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
-  if (kind === "stack")
-    return (
-      <svg className="pg-ico stack" viewBox="0 0 40 40" aria-hidden="true">
-        <path d="M27 2.5v4.5" stroke="#5b2fa8" strokeWidth="1.2" opacity="0.5" />
-        <rect x="21.5" y="7" width="11" height="6.5" rx="3.2" fill="#7a4fd0" />
-        <rect x="11.5" y="15" width="13" height="6.5" rx="3.2" fill="#5b2fa8" />
-        <rect x="14.5" y="21.5" width="13" height="6.5" rx="3.2" fill="#7a4fd0" />
-        <rect x="12" y="28" width="13" height="6.5" rx="3.2" fill="#5b2fa8" />
-        <rect x="7" y="34.5" width="26" height="3" rx="1.2" fill="#8a6b45" />
-        <path d="M18.5 7l-3 1.5M35 9.5l-3-1" stroke="#7a4fd0" strokeWidth="1.2" strokeLinecap="round" opacity="0.6" />
-      </svg>
-    );
   return (
     <svg className="pg-ico gift" viewBox="0 0 40 40" aria-hidden="true">
       <path d="M20 15 Q18.5 7 25 4" stroke="#3a3f47" strokeWidth="2" fill="none" />
@@ -157,6 +146,21 @@ export function ModePlayIcon({ kind }: { kind: SquadModeKind }) {
   );
 }
 
+/** 基建加盖: blocks stacked on a plank, the top one swinging in from the side */
+export function StackPlayIcon() {
+  return (
+    <svg className="pg-ico stack" viewBox="0 0 40 40" aria-hidden="true">
+      <path d="M27 2.5v4.5" stroke="#5b2fa8" strokeWidth="1.2" opacity="0.5" />
+      <rect x="21.5" y="7" width="11" height="6.5" rx="3.2" fill="#7a4fd0" />
+      <rect x="11.5" y="15" width="13" height="6.5" rx="3.2" fill="#5b2fa8" />
+      <rect x="14.5" y="21.5" width="13" height="6.5" rx="3.2" fill="#7a4fd0" />
+      <rect x="12" y="28" width="13" height="6.5" rx="3.2" fill="#5b2fa8" />
+      <rect x="7" y="34.5" width="26" height="3" rx="1.2" fill="#8a6b45" />
+      <path d="M18.5 7l-3 1.5M35 9.5l-3-1" stroke="#7a4fd0" strokeWidth="1.2" strokeLinecap="round" opacity="0.6" />
+    </svg>
+  );
+}
+
 /** The tiles as they show, for the room as it is now (on the server's clock) and 钓鳞's line as it stands */
 export function PlayGrid({
   room,
@@ -166,6 +170,7 @@ export function PlayGrid({
   msg,
   onFish,
   onFire,
+  onStack,
   onMode,
 }: {
   room: SquadRoom;
@@ -176,15 +181,18 @@ export function PlayGrid({
   msg: string | null;
   onFish: () => void;
   onFire: () => void;
+  onStack: () => void;
   onMode: (row: ModeRow) => void;
 }) {
   const t = T.squad.plays;
   const me = room.members.find((m) => m.you);
   const level = fireLevel(room.fire.level, room.fire.at, now);
   const wood = woodNow(me?.wood ?? WOOD_MAX, me?.woodAt ?? null, now);
+  const tower = stackNow(room.stack, now);
   const playing = room.mode && room.mode.endsAt > now ? room.mode : null;
   return (
     <div className="sq-pg">
+      <p className="grp">{t.anytime}</p>
       <div className="tiles">
         <button type="button" className={`tile k-fish${fish === "bite" ? " alert" : ""}`} aria-label={fmt(t.fishLabel, { state: t.fishStates[fish] })} onClick={onFish}>
           <span className="pic">
@@ -203,6 +211,16 @@ export function PlayGrid({
           </span>
           <b>{T.squad.fire.play}</b>
         </button>
+        <button type="button" className="tile k-stack" aria-label={`${T.squad.stack.title}${T.squad.dot}${fmt(t.layers, { n: tower.fell ? 0 : tower.n })}`} onClick={onStack}>
+          <span className="pic">
+            <StackPlayIcon />
+            <em className="lv">{fmt(t.layers, { n: tower.fell ? 0 : tower.n })}</em>
+          </span>
+          <b>{T.squad.stack.title}</b>
+        </button>
+      </div>
+      <p className="grp">{t.oneAtATime}</p>
+      <div className="tiles">
         {MODE_KINDS.map((kind) => {
           const row = modeRow(room, kind, now);
           const tag = row.tag ?? null;
@@ -283,6 +301,10 @@ export default function SquadPlays({ room, onDone }: { room: SquadRoom; onDone?:
       }}
       onFire={() => {
         openSquadFire();
+        onDone?.();
+      }}
+      onStack={() => {
+        openSquadStack();
         onDone?.();
       }}
       onMode={(row) => void mode(row)}

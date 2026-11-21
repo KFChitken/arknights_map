@@ -245,6 +245,8 @@
 /* in 龙门广场舞 (玩点什么): where a 人机's tag would be, as they never dance (the host's 请出去 is at the right) */
 .sq-tile .dz { position: absolute; top: 6px; left: 6px; padding: 0 6px; border-radius: 6px; background: #ffe4ec; color: #b4235a; font-size: 10.5px; font-weight: 700; }
 .sq-tile .dz.k-quiz { background: #e3edf7; color: #1f4366; }
+.sq-tile .dz.k-stack { background: #ede4fb; color: #5b2fa8; }
+.sq-tower { flex: none; vertical-align: -1px; }
 .sq-seatbtns { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
 
 /* 停止加入: the host's switch at the right of the room's state, its pill gray, the seats locked */

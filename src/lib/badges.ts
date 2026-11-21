@@ -122,10 +122,11 @@ export type Badge = {
   /** Held only this many days from when it was given; the wall lists it only meanwhile, outside the tally */
   days?: number;
   /**
-   * Its serial is a place on a board (火焰周榜's), not a number: said as it pops up (「上周火焰周榜第 7 名」), and
-   * nowhere else (no 「No.0007」 on cards)
+   * Its serial is a place on a board (火焰周榜's, 基建周榜's), not a number: said as it pops up (place: 「上周火焰周榜第
+   * {n} 名」), and nowhere else (no 「No.0007」 on cards)
    */
   ranked?: true;
+  place?: string;
   /**
    * Also drawn with the guide's own picture, served from the server's own folder while that guide's
    * picture is switched on (src/app/guide-art/[file]/route.ts): /guide-art/<file>(-mini).svg, else the drawn one
@@ -154,6 +155,9 @@ export const FIRST_BATCH = 1000;
 /** 篝火守夜人: given each Monday 04:00 to those named in 火焰周榜's top 100 rooms (src/lib/server/fireBoard.ts), worn a week */
 export const FIREWATCH = "firewatch";
 export const FIREWATCH_DAYS = 7;
+/** 基建狂魔: given each Monday 04:00 to those named in 基建周榜's top 100 towers (src/lib/server/stackBoard.ts), worn a week */
+export const STACKTOP = "stacktop";
+export const STACKTOP_DAYS = 7;
 /** 石棺里的苏醒: back after this many days away, or just signed up */
 export const AWAY_DAYS = 14;
 /** 石棺里的苏醒 is held this many days, then it goes until the next time */
@@ -761,6 +765,32 @@ export const BADGES: Badge[] = [
     pill: { background: "#2a1f4a", color: "#ffd23f", border: "1.5px solid #ff8a3a" },
     days: FIREWATCH_DAYS,
     ranked: true,
+    get place() {
+      return T.lib.badges.firewatch.place;
+    },
+  },
+  {
+    id: STACKTOP,
+    get name() {
+      return T.lib.badges.stacktop.name;
+    },
+    code: "EVT-STACK100",
+    series: "event",
+    get condition() {
+      return T.lib.badges.stacktop.condition;
+    },
+    get lockedHint() {
+      return T.lib.badges.stacktop.lockedHint;
+    },
+    get quote() {
+      return T.lib.badges.stacktop.quote;
+    },
+    pill: { background: "#1f2a44", color: "#ffd23f", border: "1.5px solid #9b72e8" },
+    days: STACKTOP_DAYS,
+    ranked: true,
+    get place() {
+      return T.lib.badges.stacktop.place;
+    },
   },
   {
     // each event brings its own badge, named in events.ts

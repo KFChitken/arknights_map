@@ -3,7 +3,7 @@ import { SERVERS } from "./games";
 import type { RoachPass } from "./passes";
 import type { PublicProfile } from "./profile";
 import type { SquadBall, SquadFire, SquadOn } from "./squadFire";
-import type { SquadMode, SquadModeKind } from "./squadMode";
+import type { SquadMode, SquadModeKind, SquadStack } from "./squadMode";
 
 /**
  * 一起卫戍: rooms where players of 卫戍协议 find each other for its 联合模拟 (four at most, the host one of them), switched
@@ -419,6 +419,8 @@ export type SquadMember = {
   noThrow?: true;
   /** TA wears 篝火守夜人 this week (火焰周榜's top 100 rooms): a small flame by TA's name; never a 人机 */
   fireTop?: true;
+  /** TA wears 基建狂魔 this week (基建周榜's top 100 towers): a small tower by TA's name (after the flame); never a 人机 */
+  stackTop?: true;
 } & SquadLook &
   SquadRound;
 
@@ -451,6 +453,8 @@ export type SquadRoom = {
   fire: SquadFire;
   /** 玩点什么 (src/lib/squadMode.ts): the mode playing, while one does */
   mode: SquadMode | null;
+  /** 基建加盖, the room's tower (src/lib/squadMode.ts), always there */
+  stack: SquadStack;
   /** When it ends by itself unless something happens (ms), and why it would */
   endsAt: number;
   endsWhy: Exclude<SquadEnd, "host" | "admin">;
@@ -478,7 +482,7 @@ export type SquadTell =
        * (idle); mode: which, said even once it is gone
        */
       what?: {
-        kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen" | "pond" | "fire" | "shake" | "mode" | "quiz" | "gift" | "race" | "stack";
+        kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen" | "pond" | "fire" | "shake" | "mode" | "quiz" | "gift" | "race";
         h?: number;
         to?: SquadState;
         round?: SquadRound;
@@ -505,6 +509,11 @@ export type SquadTell =
   | { t: "dance"; room: string; items: { h: number; combo: number; ok: boolean; at: number }[] }
   /** 企鹅物流急件赛's 加油 counts ([when, how many]) and 跳s (when), each quarter second (the server's clock) */
   | { t: "race"; room: string; items: { h: number; tap?: [number, number]; jump?: number }[] }
+  /**
+   * 基建加盖's blocks, each quarter second: whose, where (x), when (the server's clock), in which round, the tower's
+   * height after it, whether it fell, and where the swing starts after it
+   */
+  | { t: "stack"; room: string; items: { h: number; x: number; at: number; round: number; n: number; falls?: true; swingAt: number }[] }
   | { t: "end"; room: string; why: SquadEnd }
   | { t: "you"; room: string; why: "kicked" | "left" };
 

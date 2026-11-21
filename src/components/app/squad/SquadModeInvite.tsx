@@ -70,7 +70,7 @@ export function InviteLine({
     ? who
       ? fmtNodes(t.waitInvites, { name: who, mode: name, n })
       : fmtNodes(t.waitInvitesNoBy, { mode: name, n })
-    : mode.kind === "dance" || mode.kind === "stack"
+    : mode.kind === "dance"
       ? who
         ? fmtNodes(t.invites[mode.kind], { name: who, mode: name, n })
         : fmtNodes(t.invitesNoBy[mode.kind], { mode: name, n })
@@ -89,7 +89,7 @@ export function InviteLine({
         {note && <small>{note}</small>}
       </span>
       <button type="button" className="acc" disabled={busy} onClick={onJoin}>
-        {mode.wait ? t.inviteReady : mode.kind === "dance" || mode.kind === "stack" ? t.inviteJoin : t.inviteNext}
+        {mode.wait ? t.inviteReady : mode.kind === "dance" ? t.inviteJoin : t.inviteNext}
       </button>
       <button type="button" className="no" onClick={onNo} aria-label={fmt(t.inviteNoLabel, { mode: t.names[mode.kind] })}>
         {t.inviteNo}

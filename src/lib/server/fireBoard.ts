@@ -40,14 +40,17 @@ export type BoardRoom = { room: string; peak: number; peakAt: number; sticks: { 
 /** A row as ranked: the room, its highest level, the players named (ids, with their sticks) */
 export type Ranked = { room: string; peak: number; named: { user: string; sticks: number }[] };
 
-/** The week's rows, best first (see above); counts: whether a player may be named (real, not suspended) */
-export function rankRooms(rooms: readonly BoardRoom[], counts: (user: string) => boolean): Ranked[] {
+/**
+ * The week's rows, best first (see above); counts: whether a player may be named (real, not suspended); least: what
+ * one must have put on a row to be named there (基建周榜's towers rank the same way, with their blocks)
+ */
+export function rankRooms(rooms: readonly BoardRoom[], counts: (user: string) => boolean, least = BOARD_STICKS): Ranked[] {
   const order = rooms.filter((r) => r.peak > 0).sort((a, b) => b.peak - a.peak || a.peakAt - b.peakAt || (a.room < b.room ? -1 : 1));
   const named = new Set<string>();
   const rows: Ranked[] = [];
   for (const r of order) {
     const these = r.sticks
-      .filter((s) => s.sticks >= BOARD_STICKS && counts(s.user) && !named.has(s.user))
+      .filter((s) => s.sticks >= least && counts(s.user) && !named.has(s.user))
       .sort((a, b) => b.sticks - a.sticks || a.first - b.first)
       .slice(0, BOARD_NAMES);
     if (these.length < BOARD_MIN) continue;
@@ -90,7 +93,7 @@ async function rankWeek(exec: Exec, week: number, now: number): Promise<Ranked[]
 }
 
 /** Names as the board writes them: as in the rooms, with their roach's look; 「一位舟P」 for one who keeps theirs off; the gone left out */
-async function namesOf(ids: readonly string[], hidden: string): Promise<Map<string, FireBoardName>> {
+export async function namesOf(ids: readonly string[], hidden: string): Promise<Map<string, FireBoardName>> {
   if (!ids.length) return new Map();
   const rows = await db.select().from(users).where(inArray(users.id, [...ids]));
   return new Map(
@@ -126,7 +129,7 @@ async function thisWeek(now: number, hidden: string): Promise<Held> {
   return fresh;
 }
 
-const nameList = (users: readonly string[], names: Map<string, FireBoardName>, viewerId: string, you: string): FireBoardName[] =>
+export const nameList = (users: readonly string[], names: Map<string, FireBoardName>, viewerId: string, you: string): FireBoardName[] =>
   users.flatMap((u) => {
     const name = names.get(u);
     if (u === viewerId) return [{ name: you, ...(name?.look ? { look: name.look } : {}), you: true as const }];

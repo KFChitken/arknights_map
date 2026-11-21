@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, randomInt } from "node:crypto";
-import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { fmt, T } from "@/i18n";
 import { COUNTED } from "../dashboard";
 import { SQUAD_TEMPLATE } from "../declarations";
@@ -8,9 +8,9 @@ import { INVITE_MS, QUIET_AFTER_LATER_MS } from "../listen";
 import { displayName } from "../profile";
 import { beijingDate } from "../beijing";
 import { siteDay, siteDayStart } from "../siteDay";
-import { FIREWATCH, FIREWATCH_DAYS } from "../badges";
+import { FIREWATCH, FIREWATCH_DAYS, STACKTOP, STACKTOP_DAYS } from "../badges";
 import { fireEnd, playOn } from "../squadFire";
-import { inRound, isLobbyData, isMatchKind, modeEnds, type GiftData, type MatchRound, type QuizData, type RaceData, type SquadMode, type StackData } from "../squadMode";
+import { inRound, isLobbyData, isMatchKind, modeEnds, STACK_SEND_MS, towerNow, type GiftData, type MatchRound, type QuizData, type RaceData, type SquadMode } from "../squadMode";
 import {
   BOT_EXTRAS_MAX,
   BOT_SAY_EVERY_MS,
@@ -376,6 +376,42 @@ export async function flushRacesNow() {
   }
 }
 
+/** 基建加盖's own batches: the blocks put, told to the room STACK_SEND_MS after the first (as the race's) */
+type Stacked = Extract<SquadTell, { t: "stack" }>["items"][number];
+const gs = globalThis as unknown as { squadStacks?: Map<string, { items: Stacked[]; timer: ReturnType<typeof setTimeout> }> };
+const stacked = (gs.squadStacks ??= new Map());
+
+/** For 基建加盖 (src/lib/server/squadStack.ts): a block put, told to the whole room with the next quarter second's */
+export function stackInRoom(roomId: string, put: Stacked) {
+  let b = stacked.get(roomId);
+  if (!b) {
+    b = { items: [], timer: setTimeout(() => void flushStack(roomId), STACK_SEND_MS) };
+    b.timer.unref?.();
+    stacked.set(roomId, b);
+  }
+  b.items.push(put);
+}
+
+async function flushStack(roomId: string) {
+  const b = stacked.get(roomId);
+  stacked.delete(roomId);
+  if (!b?.items.length) return;
+  try {
+    const ids = (await hearersOf(roomId)).map((r) => r.userId);
+    tellSquad(ids, { t: "stack", room: roomId, items: b.items } satisfies SquadTell);
+  } catch (e) {
+    console.error("squad: telling a room its tower failed", e);
+  }
+}
+
+/** For tests: the tower's batches waiting to go out now, gone */
+export async function flushStacksNow() {
+  for (const [roomId, b] of [...stacked]) {
+    clearTimeout(b.timer);
+    await flushStack(roomId);
+  }
+}
+
 /** For 卫戍池塘 (src/lib/server/fish.ts): tell the room someone's line went in or came out, or a 鱼群 came */
 export const tellSquadPond = (roomId: string, h?: number) => tellRoom(roomId, { kind: "pond", ...(h === undefined ? {} : { h }) });
 
@@ -432,12 +468,12 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
         ...(pass ? { pass } : {}),
       };
     });
-  // 卫戍池塘: who has a line in it, the 鳞 of this 局, today's 空军司令; and who wears 篝火守夜人 this week
+  // 卫戍池塘: who has a line in it, the 鳞 of this 局, today's 空军司令; and who wears 篝火守夜人 or 基建狂魔 this week
   const ids = rows.map((r) => r.u.id);
-  const [inPond, admirals, watching] = await Promise.all([
+  const [inPond, admirals, wearing] = await Promise.all([
     db.select({ userId: fishLines.userId }).from(fishLines).where(and(inArray(fishLines.userId, ids), eq(fishLines.spot, "pond"))),
     db.select({ userId: fishDays.userId }).from(fishDays).where(and(inArray(fishDays.userId, ids), eq(fishDays.day, siteDay(now)), eq(fishDays.admiral, true))),
-    fireWatchers(ids, now),
+    weekWearers(ids, now),
   ]);
   const fishing = new Set(inPond.map((r) => r.userId));
   const admiral = new Set(admirals.map((r) => r.userId));
@@ -445,7 +481,8 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     if (fishing.has(u.id)) people[i].fishing = true;
     if (m.fishN) people[i].fishN = m.fishN;
     if (admiral.has(u.id)) people[i].admiral = true;
-    if (watching.has(u.id)) people[i].fireTop = true;
+    if (wearing.fire.has(u.id)) people[i].fireTop = true;
+    if (wearing.stack.has(u.id)) people[i].stackTop = true;
     // 篝火's sticks, yours alone; 扔东西: what of it stays on each, while it does
     if (u.id === viewerId) Object.assign(people[i], { wood: m.wood, woodAt: m.woodAt?.getTime() ?? null });
     Object.assign(people[i], playOn(m, now));
@@ -515,30 +552,43 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
       lastTop: room.fireLastTop,
       bestTop: room.fireBestTop,
     },
-    mode: await modeView(room, rows, me.handle, now),
+    mode: await modeView(room, rows, now),
+    stack: stackView(towerNow(room.stack, room.createdAt.getTime(), now), room.stackBest, now),
     endsAt: ends.at,
     endsWhy: ends.why,
     now,
   };
 }
 
-/** Of these players, those wearing 篝火守夜人 now (src/lib/server/fireBoard.ts: given for a week each Monday 04:00) */
-async function fireWatchers(ids: string[], now: number) {
-  if (!ids.length) return new Set<string>();
+/**
+ * Of these players, those wearing 篝火守夜人 (fire) and 基建狂魔 (stack) now, each given for a week each Monday 04:00
+ * (src/lib/server/fireBoard.ts, stackBoard.ts)
+ */
+async function weekWearers(ids: string[], now: number) {
+  const fire = new Set<string>();
+  const stack = new Set<string>();
+  if (!ids.length) return { fire, stack };
+  const since = (days: number) => new Date(now - days * 86_400_000);
   const rows = await db
-    .select({ userId: userBadges.userId })
+    .select({ userId: userBadges.userId, badge: userBadges.badge })
     .from(userBadges)
-    .where(and(inArray(userBadges.userId, ids), eq(userBadges.badge, FIREWATCH), gt(userBadges.earnedAt, new Date(now - FIREWATCH_DAYS * 86_400_000))));
-  return new Set(rows.map((r) => r.userId));
+    .where(
+      and(
+        inArray(userBadges.userId, ids),
+        or(and(eq(userBadges.badge, FIREWATCH), gt(userBadges.earnedAt, since(FIREWATCH_DAYS))), and(eq(userBadges.badge, STACKTOP), gt(userBadges.earnedAt, since(STACKTOP_DAYS)))),
+      ),
+    );
+  for (const r of rows) (r.badge === FIREWATCH ? fire : stack).add(r.userId);
+  return { fire, stack };
 }
 
 /**
  * 玩点什么's mode as the room's pages have it (src/lib/squadMode.ts), while it plays (one over is cleared by the next
- * request to it, or the sweep: src/lib/server/squadModes.ts); those in it in their numbers' order; 基建加盖's hand the
- * viewer's (numbered `viewer`). A match waiting: those ready, its initiator first, then as they readied; a round
- * playing: those in it, and those who asked for the next (next) as they asked.
+ * request to it, or the sweep: src/lib/server/squadModes.ts); those in it in their numbers' order; a kind not known
+ * any more (基建加盖 before it became the room's own tower), none. A match waiting: those ready, its initiator first,
+ * then as they readied; a round playing: those in it, and those who asked for the next (next) as they asked.
  */
-async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof squadMembers.$inferSelect }[], viewer: number, now: number): Promise<SquadMode | null> {
+async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof squadMembers.$inferSelect }[], now: number): Promise<SquadMode | null> {
   if (!room.mode || !room.modeAt || !room.modeUntil || !room.modeLast) return null;
   const endsAt = modeEnds(room.mode, room.modeUntil.getTime(), room.modeLast.getTime());
   if (endsAt <= now) return null;
@@ -600,7 +650,6 @@ async function modeView(room: typeof squadRooms.$inferSelect, rows: { m: typeof 
       ...(data.end ? { end: data.end } : {}),
     };
   }
-  if (room.mode === "stack" && room.modeData) return { kind: "stack", ...base, ...stackView(room.modeData as StackData, room.stackBest, viewer) };
   if (room.mode !== "dance" || !room.modeSong || !room.modeSongAt) return null;
   return { kind: "dance", ...base, song: room.modeSong, name: (await songOf(room.modeSong))?.name ?? "", songAt: room.modeSongAt.getTime() };
 }

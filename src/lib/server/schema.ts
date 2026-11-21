@@ -24,7 +24,7 @@ import {
 import type { StatSnapshot } from "../dashboard";
 import type { PassPool } from "../passes";
 import type { RadarScan } from "../world/types";
-import type { GiftData, LobbyData, QuizData, RaceData, StackData } from "../squadMode";
+import type { GiftData, LobbyData, QuizData, RaceData, StackTower } from "../squadMode";
 
 /** PostGIS geography; only ever written through the generated column below. */
 const geography = customType<{ data: string }>({ dataType: () => "geography" });
@@ -1950,11 +1950,13 @@ export const squadRooms = pgTable(
     /**
      * The mode's own, never sent as it is: 凯尔希随堂测's questions, answers and who got each first (squadQuiz.ts QuizData);
      * W 的礼物's rounds, seats and passes (squadGift.ts GiftData); 企鹅物流急件赛's lanes and what each did (squadRace.ts
-     * RaceData); 基建加盖's tower and each one's hand (squadStack.ts StackData)
+     * RaceData); a match waiting (LobbyData)
      */
-    modeData: jsonb("mode_data").$type<QuizData | GiftData | RaceData | StackData | LobbyData>(),
+    modeData: jsonb("mode_data").$type<QuizData | GiftData | RaceData | LobbyData>(),
+    /** 基建加盖, the room's tower (src/lib/squadMode.ts StackTower; null: none put yet, round 1 from the room's opening) */
+    stack: jsonb("stack").$type<StackTower>(),
     /** 基建加盖's highest tower in this room (blocks; src/lib/server/squadStack.ts) */
-    stackBest: smallint("stack_best").notNull().default(0),
+    stackBest: integer("stack_best").notNull().default(0),
     endedAt: at("ended_at"),
     endReason: text("end_reason"),
     /** 宣言招人 sent for it (once a room) */
@@ -2383,6 +2385,45 @@ export const squadFireWeeks = pgTable("squad_fire_weeks", {
   week: at("week").primaryKey(),
   settledAt: at("settled_at").notNull().defaultNow(),
   board: jsonb("board").$type<{ rank: number; peak: number; room: string; users: string[] }[]>().notNull(),
+});
+
+/**
+ * 基建周榜 (src/lib/server/stackBoard.ts): each tower (a room's round) in the week its first block was put, how high it
+ * got and when it first got there; no tie to the room, so it outlives it
+ */
+export const squadStackTowers = pgTable(
+  "squad_stack_towers",
+  {
+    roomId: uuid("room_id").notNull(),
+    round: integer("round").notNull(),
+    week: at("week").notNull(),
+    peak: integer("peak").notNull().default(0),
+    peakAt: at("peak_at"),
+  },
+  (t) => [primaryKey({ columns: [t.roomId, t.round] }), index("squad_stack_towers_week_idx").on(t.week, t.peak)],
+);
+
+/** 基建周榜: how many blocks each player put on each tower that stood (the one that made it fall not counted), and their first */
+export const squadStackBlocks = pgTable(
+  "squad_stack_blocks",
+  {
+    roomId: uuid("room_id").notNull(),
+    round: integer("round").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    week: at("week").notNull(),
+    blocks: integer("blocks").notNull().default(0),
+    firstAt: at("first_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.roomId, t.round, t.userId] }), index("squad_stack_blocks_week_idx").on(t.week)],
+);
+
+/** 基建周榜's weeks settled, as 火焰周榜's (each row's place, height, room, round and the players named, by id) */
+export const squadStackWeeks = pgTable("squad_stack_weeks", {
+  week: at("week").primaryKey(),
+  settledAt: at("settled_at").notNull().defaultNow(),
+  board: jsonb("board").$type<{ rank: number; peak: number; room: string; round: number; users: string[] }[]>().notNull(),
 });
 
 export type UserRow = typeof users.$inferSelect;

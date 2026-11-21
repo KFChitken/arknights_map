@@ -143,6 +143,33 @@ describe("a roach in a room's tile", () => {
     expect(tile(member())).not.toContain('class="bt"');
   });
 
+  it("says one thing on a tile: the mode one is in first (等开局 when ready for a match), else 在搭; a small tower by a 基建狂魔's name", () => {
+    const tile = (m: SquadMember, more: { inMode?: "quiz" | "race"; readyMode?: boolean; building?: boolean } = {}) =>
+      renderToStaticMarkup(
+        createElement(MemberTile, {
+          m,
+          art: null,
+          playing: false,
+          lift: 0,
+          open: false,
+          onCore: () => {},
+          onStrategy: () => {},
+          onMenu: () => {},
+          ...more,
+        }),
+      );
+    expect(tile(member(), { building: true })).toContain('<span class="dz k-stack">在搭</span>');
+    expect(tile(member(), { building: true, inMode: "race" })).toContain('<span class="dz k-race">在跑</span>');
+    expect(tile(member(), { building: true, inMode: "race" })).not.toContain("在搭");
+    expect(tile(member(), { building: true, inMode: "quiz", readyMode: true })).toContain('<span class="dz k-quiz">等开局</span>');
+    expect(tile(member())).not.toContain('class="dz');
+    // the flame first, then the tower
+    const both = tile(member({ fireTop: true, stackTop: true }));
+    expect(both).toContain('aria-label="基建狂魔"');
+    expect(both.indexOf('aria-label="篝火守夜人"')).toBeLessThan(both.indexOf('aria-label="基建狂魔"'));
+    expect(tile(member())).not.toContain("基建狂魔");
+  });
+
   it("says a line in a bubble for 4 s, a later one beside it higher up", () => {
     const now = Date.now();
     const bubble = (at: number) => renderToStaticMarkup(createElement(Bubble, { line: { key: 1, h: 2, p: 14, at }, lift: 28 }));

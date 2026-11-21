@@ -114,3 +114,28 @@ describe("篝火守夜人, a title worn a week by a place on 火焰周榜", () =
     expect(renderToStaticMarkup(createElement(BadgePill, { badge: { id: "firewatch", serial: 7 } }))).not.toContain("No.");
   });
 });
+
+describe("基建狂魔, a title worn a week by a place on 基建周榜", () => {
+  const at = Date.parse("2026-11-16T04:00:00+08:00");
+  const until = at + 7 * 86_400_000;
+  const earned: EarnedBadge = { id: "stacktop", serial: 12, at, seen: false, until };
+
+  it("pops up as 篝火守夜人 does, its place on 基建周榜", () => {
+    const html = renderToStaticMarkup(createElement(NewBadge, { earned, onWear: () => {}, onLater: () => {} }));
+    expect(text(html)).toContain("获得新称号 · 限定一周");
+    expect(text(html)).toContain("基建狂魔");
+    expect(text(html)).toContain("上周基建周榜第 12 名");
+    expect(text(html)).not.toContain("火焰周榜");
+    expect(text(html)).toContain("戴到 11/23（周一）凌晨 4 点");
+    expect(text(html)).toContain("没有图纸，没有地基，照样盖到了天上。");
+    expect(html).not.toContain("No.0012");
+  });
+
+  it("is listed on 我的称号 only while held, as 限定 with the days left", () => {
+    const now = at + 2 * 86_400_000;
+    expect(wallBadges(new Set(), now).some((b) => b.id === "stacktop")).toBe(false);
+    expect(wallBadges(new Set(["stacktop"]), now).some((b) => b.id === "stacktop")).toBe(true);
+    expect(text(wall([earned], null))).toMatch(/限定 · 还剩 \d+ 天/);
+    expect(renderToStaticMarkup(createElement(BadgePill, { badge: { id: "stacktop", serial: 12 } }))).not.toContain("No.");
+  });
+});

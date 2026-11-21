@@ -53,6 +53,7 @@ const room = (more: Partial<SquadRoom> = {}): SquadRoom => ({
   members: [member(1), member(2), member(3), member(4)],
   wentAt: NOW - 600_000,
   fire: { level: 0, prog: 0, at: NOW, by: null, top: 0, last: null, lastTop: 0, bestTop: 0 },
+  stack: { round: 1, at: NOW, n: 0, sum: 0, top: [], swingAt: NOW, best: 0, busy: [] },
   mode: null,
   endsAt: NOW + 3_600_000,
   endsWhy: "idle",
@@ -78,7 +79,7 @@ describe("「玩」's tiles", () => {
   });
 
   const grid = (r: SquadRoom, fish: FishLook = "rest", msg: string | null = null) =>
-    renderToStaticMarkup(createElement(PlayGrid, { room: r, now: NOW, fish, busy: false, msg, onFish: nothing, onFire: nothing, onMode: nothing }));
+    renderToStaticMarkup(createElement(PlayGrid, { room: r, now: NOW, fish, busy: false, msg, onFish: nothing, onFire: nothing, onStack: nothing, onMode: nothing }));
 
   it("shows every game as an icon and its name, nothing more", () => {
     const html = grid(room({ fire: { level: 0, prog: 0, at: NOW, by: null, top: 0, last: null, lastTop: 0, bestTop: 0 } }));
@@ -95,6 +96,22 @@ describe("「玩」's tiles", () => {
     expect(html).toContain('class="pg-ico stack"');
     expect(html).not.toContain("<small>");
     expect(html).not.toContain('class="now"');
+  });
+
+  it("puts 钓鳞, 添柴 and 基建加盖 under 随时能玩, the four modes under 一次玩一个, the tower's tile saying how high it is", () => {
+    const html = grid(room({ stack: { round: 3, at: NOW, n: 23, sum: 0, top: [], swingAt: NOW, best: 30, busy: [] }, mode: dance() }));
+    const at = (s: string) => html.indexOf(s);
+    expect(at('<p class="grp">随时能玩</p>')).toBeGreaterThanOrEqual(0);
+    expect(at("随时能玩")).toBeLessThan(at("<b>钓鳞</b>"));
+    expect(at("<b>基建加盖</b>")).toBeLessThan(at('<p class="grp">一次玩一个 · 比赛要先等人</p>'));
+    expect(at("一次玩一个")).toBeLessThan(at("<b>龙门广场舞</b>"));
+    expect(html).toContain('<em class="lv">23 层</em>');
+    expect(html).toContain('aria-label="基建加盖 · 23 层"');
+    // a mode playing leaves the tower's tile as it is
+    expect(html).toContain('class="tile k-stack"');
+    expect(html).not.toContain("k-stack off");
+    // a tower that fell, till its new plank: 0
+    expect(grid(room({ stack: { round: 3, at: NOW, n: 9, sum: 0, top: [], fell: { at: NOW - 1_000, height: 8 }, swingAt: NOW, best: 30, busy: [] } }))).toContain('<em class="lv">0 层</em>');
   });
 
   it("draws 钓鳞 as its line stands, and the fire as it burns with its level and the sticks in your hand", () => {
@@ -114,7 +131,7 @@ describe("「玩」's tiles", () => {
       );
     const out = fire(0, 0);
     expect(out).toContain('class="pg-ico fire out"');
-    expect(out).not.toContain('class="lv"');
+    expect(out).not.toContain(">Lv.");
     expect(out).toContain('<em class="wood"><i aria-hidden="true"></i>0</em>');
     const big = fire(23, 2);
     expect(big).toContain('class="pg-ico fire big"');

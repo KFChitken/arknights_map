@@ -54,6 +54,7 @@ import { useTick } from "../dayTurns";
 import { CoreBadge, CoreChips, extraNames, LevelBadge, LevelChips, levelName, StrategyGrid, StrategyPic } from "./SquadPicks";
 import { Bubble, liftsOf, SquadRoach } from "./SquadRoach";
 import SmallFlame from "./SmallFlame";
+import SmallTower from "./SmallTower";
 import SquadMateCard from "./SquadMateCard";
 import { ListenRow } from "./SquadListen";
 import SquadPlays from "./SquadPlays";
@@ -1179,6 +1180,7 @@ function RoomView({
             open={menu === m.h}
             inMode={room.mode?.in.some((x) => x.h === m.h) ? room.mode.kind : undefined}
             readyMode={Boolean(room.mode?.wait && room.mode.in.some((x) => x.h === m.h))}
+            building={room.stack.busy.includes(m.h)}
             onCore={() => setPicking("core")}
             onStrategy={() => (room.state === "go" ? setTalking("round") : setPicking("strategy"))}
             onMenu={() => setMenu((x) => (x === m.h ? null : m.h))}
@@ -1582,6 +1584,7 @@ function MemberTile({
   open,
   inMode,
   readyMode = false,
+  building = false,
   onCore,
   onStrategy,
   onMenu,
@@ -1607,6 +1610,8 @@ function MemberTile({
   inMode?: SquadModeKind;
   /** Ready for a match waiting for people: 等开局 */
   readyMode?: boolean;
+  /** Put a block on 基建加盖's tower within the last 30 seconds: 在搭, when not in a mode */
+  building?: boolean;
   onCore: () => void;
   onStrategy: () => void;
   onMenu: () => void;
@@ -1621,10 +1626,15 @@ function MemberTile({
       {m.bot && <span className="bt">{T.squad.bot.tag}</span>}
       <Bubble line={line} lift={lift} to={line?.to === undefined ? null : lineTo?.(line.to)} />
       <SquadRoach m={inMode === "dance" && m.pose !== 1 ? { ...m, pose: 1 } : m} size={44} line={line} move={move} toMe={toMe} play="tile" />
-      {inMode && <span className={`dz k-${inMode}`}>{readyMode ? T.squad.modes.readyTag : T.squad.modes.tileTags[inMode]}</span>}
+      {inMode ? (
+        <span className={`dz k-${inMode}`}>{readyMode ? T.squad.modes.readyTag : T.squad.modes.tileTags[inMode]}</span>
+      ) : (
+        building && <span className="dz k-stack">{T.squad.modes.tileTags.stack}</span>
+      )}
       <span className="nm">
         {m.name}
         {m.fireTop && <SmallFlame label={T.lib.badges.firewatch.name} />}
+        {m.stackTop && <SmallTower label={T.lib.badges.stacktop.name} />}
         {m.you && <small>{T.squad.room.you}</small>}
         {m.friend && <small className="fr">{T.squad.room.friend}</small>}
       </span>

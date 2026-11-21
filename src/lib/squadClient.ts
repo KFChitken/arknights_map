@@ -4,7 +4,7 @@ import { AGE_CHECK, ageCheckNeeded } from "./consent";
 import type { PassesDot } from "./passes";
 import type { SquadBotDo, SquadCard, SquadFriend, SquadInviteSent, SquadList, SquadMove, SquadPose, SquadRoom, SquadRound } from "./squad";
 import type { FireBoard, SquadFire } from "./squadFire";
-import type { DanceSong, QuizAnswered, QuizAsk, SquadModeKind } from "./squadMode";
+import type { DanceSong, QuizAnswered, QuizAsk, SquadModeKind, StackBoard } from "./squadMode";
 import { AgeCheckNeeded, ConsentNeeded, SignInNeeded, WorldError, type TouchResult } from "./world/types";
 
 /**
@@ -112,13 +112,15 @@ export const squadApi = {
   /** 企鹅物流急件赛: 加油 (tap: how many since the last) or 跳 (jump), at the server's clock as this page has it; as taken */
   run: (body: { tap: number; at: number } | { jump: true; at: number }) => call<{ now: number; h: number; tap?: [number, number]; jump?: number }>("run", post(body)),
   /**
-   * 基建加盖: 放 your roach on the tower (drop, at the server's clock as this page has it) or 再来一轮 (again), in the round
-   * this page has; where it went, whether the tower fell or sways, and how high it stands (a drop), the room's highest
+   * 基建加盖: 放 your roach on the room's tower, at the server's clock as this page has it, in the round this page has;
+   * the tower's height after it, where it went, whether it fell or sways, the swing's start after it, the room's highest
    */
-  stack: (body: { do: "drop"; round: number; at: number } | { do: "again"; round: number }) =>
-    call<{ now: number; round: number; best: number; x?: number; falls?: boolean; wobbles?: boolean; height?: number }>("stack", post(body)),
+  stack: (body: { do: "drop"; round: number; at: number }) =>
+    call<{ now: number; round: number; n: number; x: number; falls: boolean; wobbles: boolean; best: number; swingAt: number }>("stack", post(body)),
   /** 火焰周榜: this week's or last week's, and your room on it */
   fireBoard: (week: "this" | "last") => call<FireBoard>("fireboard", post({ week })),
+  /** 基建周榜: this week's or last week's, and your towers on it */
+  stackBoard: (week: "this" | "last") => call<StackBoard>("stackboard", post({ week })),
   /** 偷偷碰 or 大胆碰 someone in the room, by their number there */
   touch: (h: number, bold: boolean) => call<TouchResult & { now: number }>("touch", post({ h, bold })),
   /** A set line, by its number (to: the one in the room it is said to, 对 TA 说): sent, or one too many (full: the hour's are used up) */

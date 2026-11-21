@@ -8,6 +8,7 @@ import type { RoachAvatar, RoachColor } from "@/lib/types";
 import { WorldError } from "@/lib/world/types";
 import { picOf } from "../fish/words";
 import { SquadRoach } from "./SquadRoach";
+import { StackBehind } from "./SquadStack";
 import { closeSquadModeCard, squadModeIn, squadRaceJump, squadRaceTap, squadServerNow, useSquadModeCard, useSquadRoom } from "./squading";
 import "./squadModes.css";
 
@@ -345,6 +346,7 @@ export function RaceView({
           ×
         </button>
       </header>
+      <StackBehind />
       <div className="stage" ref={stageRef}>
         <Street room={room} mode={mode} run={run} now={now} w={width} />
       </div>

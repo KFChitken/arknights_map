@@ -13,15 +13,14 @@ import {
   RACE_M,
   raceOrder,
   raceRun,
-  stackHand,
-  stackHeight,
+  stackNow,
   stackSwing,
   STACK_SWING_PX,
   type QuizAsk,
   type QuizMode,
   type SquadMode,
   type SquadModeKind,
-  type StackMode,
+  type SquadStack,
 } from "@/lib/squadMode";
 import { WorldError } from "@/lib/world/types";
 import { openFishWin, tapFishNow, useFishWin } from "../fish/winStore";
@@ -42,7 +41,6 @@ import {
   squadRaceJump,
   squadRaceTap,
   squadServerNow,
-  squadStackAgain,
   squadStackDrop,
   useSquadLines,
   useSquadMoves,
@@ -57,8 +55,9 @@ import "./squadMini.css";
 
 /**
  * The room of 一起卫戍 small (卫戍碎片时间玩法 ⑧, the canvases Pip and Mini): the room's line and its clock in a round;
- * the mode playing as a strip, lit when it is your turn, with what it needs (传, 跳 and 加油, 跳, 放, the quiz's three,
- * or 加入); the four roaches with what they said and what sits on their heads; the last two lines said; 钓鳞's float,
+ * a strip, lit when it is your turn: the mode playing or waiting, with what it needs (传, 跳 and 加油, 跳, the quiz's
+ * three, 加入, 准备, 开始), else 基建加盖's tower with 放; the four roaches with what they said and what sits on their
+ * heads; the last two lines said; 钓鳞's float,
  * 咕咚 and 收竿; and 说话, 扔东西 and 跟着听, each opening its page in place of the rest. The same in a window over the game
  * (SquadPip: 电脑小窗, from 弹出小窗) and as the whole page while the page is small (SquadMiniPage: 窗口很小时).
  */
@@ -70,9 +69,9 @@ const LINES_SHOWN = 2;
 
 type Panel = "say" | "throw" | "listen";
 /** What a strip's button does: 加入 (a match waiting: 准备; a round playing: 下一局算我), a match's 开始, a game's own */
-export type StripAct = "join" | "start" | "danceTap" | "pass" | "jump" | "cheer" | "drop" | "stackAgain";
-/** The strip of the mode playing: which, how it stands, lit when it is your turn, its buttons (on: may be tapped now) */
-export type Strip = { kind: SquadModeKind; text: string; lit: boolean; acts: { act: StripAct; label: string; on: boolean }[] };
+export type StripAct = "join" | "start" | "danceTap" | "pass" | "jump" | "cheer" | "drop";
+/** The strip of the mode playing, or of the tower: which, how it stands, lit when it is your turn, its buttons (on: may be tapped now) */
+export type Strip = { kind: SquadModeKind | "stack"; text: string; lit: boolean; acts: { act: StripAct; label: string; on: boolean }[] };
 
 const secs = (ms: number) => Math.max(1, Math.ceil(ms / 1000));
 
@@ -117,7 +116,7 @@ export function stripOf(room: SquadRoom, mode: SquadMode, now: number, picks: Qu
     const yours = giftAt(round, mode.seed, ph.r, now).seat === mine;
     return { kind, text: line(yours ? t.giftYours : T.squad.gift.waiting), lit: yours, acts: [{ act: "pass", label: T.squad.gift.pass, on: yours }] };
   }
-  if (mode.kind === "race") {
+  {
     const lane = mode.lanes.findIndex((l) => l.h === room.you);
     if (lane < 0) return { kind, text: line(t.raceNext), lit: false, acts: [] };
     const run = raceRun(mode, now);
@@ -137,14 +136,14 @@ export function stripOf(room: SquadRoom, mode: SquadMode, now: number, picks: Qu
       ],
     };
   }
-  const hand = stackHand(mode.hand, now);
-  if (mode.fell) return { kind, text: line(fmt(T.squad.stack.fell, { n: mode.fell.height })), lit: false, acts: [{ act: "stackAgain", label: T.squad.stack.again, on: true }] };
-  return {
-    kind,
-    text: line(fmt(t.stackNow, { n: stackHeight(mode), k: hand.n })),
-    lit: hand.n > 0,
-    acts: [{ act: "drop", label: hand.n > 0 ? T.squad.stack.drop : T.squad.stack.empty, on: hand.n > 0 }],
-  };
+}
+
+/** 基建加盖's strip, with no mode playing nor waiting: the tower's height and 放, or it fell (放 grey till its new plank) */
+export function stackStrip(room: SquadRoom, now: number): Strip {
+  const s = stackNow(room.stack, now);
+  const t = T.squad.stack;
+  if (s.fell) return { kind: "stack", text: fmt(t.miniFell, { n: s.fell.height }), lit: false, acts: [{ act: "drop", label: t.drop, on: false }] };
+  return { kind: "stack", text: fmt(t.mini, { n: s.n }), lit: false, acts: [{ act: "drop", label: t.drop, on: true }] };
 }
 
 /** The room's line at the top: as the bar beside 卫戍 has it; in a round, how long it has gone */
@@ -176,14 +175,15 @@ export function lastLines(room: SquadRoom, lines: readonly SquadLine[], n = LINE
     });
 }
 
+/** Where on the small track a block is (x px from the plank's middle) */
+const trackAt = (x: number) => `${(50 + (50 * x) / (STACK_SWING_PX + 20)).toFixed(2)}%`;
+
 /** 基建加盖's top and your roach over it, small: a track of the swing, the top block marked, your roach moving (every frame by swingRef) */
-function StackTrack({ mode, now, swingRef }: { mode: StackMode; now: number; swingRef?: RefObject<HTMLElement | null> }) {
-  const top = mode.blocks.length && !mode.fell ? mode.blocks[mode.blocks.length - 1].x : 0;
-  const at = (x: number) => `${(50 + (50 * x) / (STACK_SWING_PX + 20)).toFixed(2)}%`;
+function StackTrack({ tower, now, swingRef }: { tower: SquadStack; now: number; swingRef?: RefObject<HTMLElement | null> }) {
   return (
     <span className="trk" aria-hidden="true">
-      <i className="top" style={{ left: at(top) }} />
-      <i className="you" ref={swingRef} style={{ left: at(stackSwing(mode.roundAt, now)) }} />
+      <i className="top" style={{ left: trackAt(tower.top.at(-1)?.x ?? 0) }} />
+      <i className="you" ref={swingRef} style={{ left: trackAt(stackSwing(tower.swingAt, tower.n, now)) }} />
     </span>
   );
 }
@@ -279,7 +279,8 @@ export function MiniView({
   const t = T.squad.mini;
   const head = headOf(room, now);
   const mode = room.mode && room.mode.endsAt > now ? room.mode : null;
-  const strip = mode ? stripOf(room, mode, now, picks) : null;
+  const tower = stackNow(room.stack, now);
+  const strip = mode ? stripOf(room, mode, now, picks) : stackStrip(room, now);
   const order = room.members.map((m) => m.h);
   const lifts = liftsOf(lines, order, 22, now);
   const said = lastLines(room, lines);
@@ -308,13 +309,13 @@ export function MiniView({
             <div className={`ms k-${strip.kind}${strip.lit ? " lit" : ""}`}>
               <div className="mt">
                 <span className="tx">{strip.text}</span>
-                {mode?.kind === "stack" && mode.in.some((m) => m.h === room.you) && !mode.fell && <StackTrack mode={mode} now={now} swingRef={swingRef} />}
+                {strip.kind === "stack" && !tower.fell && <StackTrack tower={tower} now={now} swingRef={swingRef} />}
                 {strip.acts.map((a) => (
                   <button
                     key={a.act}
                     type="button"
                     className={`ma a-${a.act}`}
-                    disabled={!a.on || (busy && (a.act === "join" || a.act === "start" || a.act === "stackAgain"))}
+                    disabled={!a.on || (busy && (a.act === "join" || a.act === "start"))}
                     onPointerDown={(e) => e.button === 0 && a.on && (a.act === "jump" || a.act === "cheer" || a.act === "drop" || a.act === "danceTap" || a.act === "pass") && onAct(a.act)}
                     onClick={(e) => {
                       // the quick ones go at the press; the rest, and keys, at the click
@@ -425,8 +426,11 @@ function SquadMini({ room, where, onListen, onToast }: { room: SquadRoom; where:
   const ask = q ? asks[q.n] : undefined;
   // a 前奏 question plays its song here too (the quiz's own card may be shut)
   useIntro(q?.kind === "intro" && ask?.url ? ask.url : null, q?.at ?? 0, q ? q.ends - q.at : 0);
-  const stacking = mode?.kind === "stack";
-  const roundAt = mode?.kind === "stack" ? mode.roundAt : 0;
+  // 基建加盖's strip shows while no mode plays nor waits
+  const tower = stackNow(room.stack, now);
+  const stacking = !mode && !tower.fell;
+  const swingAt = tower.swingAt;
+  const height = tower.n;
   // the clock and the frames of the window it is drawn in: in the window over everything they go on while the page
   // itself is hidden behind the game
   const own = () => rootRef.current?.ownerDocument.defaultView ?? window;
@@ -443,12 +447,12 @@ function SquadMini({ room, where, onListen, onToast }: { room: SquadRoom; where:
     let raf = 0;
     const frame = () => {
       const el = swingRef.current;
-      if (el) el.style.left = `${(50 + (50 * stackSwing(roundAt, squadServerNow())) / (STACK_SWING_PX + 20)).toFixed(2)}%`;
+      if (el) el.style.left = trackAt(stackSwing(swingAt, height, squadServerNow()));
       raf = w.requestAnimationFrame(frame);
     };
     raf = w.requestAnimationFrame(frame);
     return () => w.cancelAnimationFrame(raf);
-  }, [stacking, roundAt]);
+  }, [stacking, swingAt, height]);
 
   const fail = (e: unknown) => setMsg(e instanceof WorldError ? e.message : T.map.common.tryAgain);
   const run = async (p: () => Promise<unknown>) => {
@@ -470,7 +474,6 @@ function SquadMini({ room, where, onListen, onToast }: { room: SquadRoom; where:
     if (act === "jump") return void squadRaceJump().catch(fail);
     if (act === "cheer") return squadRaceTap();
     if (act === "start") return void run(() => squadStartMatch());
-    if (act === "stackAgain") return void run(() => squadStackAgain());
     // 放: one a second, as the server takes them
     const tap = Date.now();
     if (tap - lastDrop.current < 1_000) return setMsg(T.squad.stack.slow);

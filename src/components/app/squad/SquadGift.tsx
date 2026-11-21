@@ -12,6 +12,7 @@ import { picOf } from "../fish/words";
 import { isListening, listenLiteNow, listenTap, useListenPlayer } from "../listening";
 import { keepMusicWanted, musicWanted, musicWords, useDanceMusic, type DanceMusic } from "./SquadDance";
 import { SquadRoach } from "./SquadRoach";
+import { StackBehind } from "./SquadStack";
 import { closeSquadModeCard, squadDanceSong, squadGiftPass, squadModeIn, squadServerNow, useSquadModeCard, useSquadRoom } from "./squading";
 import "./squadModes.css";
 
@@ -185,6 +186,7 @@ export function GiftView({
           ×
         </button>
       </header>
+      <StackBehind />
       {phase.at === "results" ? (
         <div className="results">
           <h3>{t.results}</h3>

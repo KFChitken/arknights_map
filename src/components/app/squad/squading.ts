@@ -24,7 +24,7 @@ import {
   type SquadTell,
 } from "@/lib/squad";
 import { squadApi } from "@/lib/squadClient";
-import { BALL_BACK_MS, throwOf, woodAfter, type SquadOn } from "@/lib/squadFire";
+import { BALL_BACK_MS, throwOf, type SquadOn } from "@/lib/squadFire";
 import {
   beatOff,
   DANCE_TAP_EVERY_MS,
@@ -33,10 +33,11 @@ import {
   isMatchKind,
   LOBBY_ASK_AGAIN_MS,
   RACE_TAPS_MAX,
-  STACK_HAND_EVERY_MS,
-  STACK_HAND_MAX,
-  STACK_IDLE_MS,
+  STACK_GEAR_EVERY,
+  STACK_TOP,
   stackPut,
+  stackShift,
+  stackNow,
   stackSwing,
   type SquadModeKind,
 } from "@/lib/squadMode";
@@ -159,11 +160,16 @@ const modeCard = kept<number | null>(null);
 export const useSquadModeCard = () => useSyncExternalStore(modeCard.on, modeCard.get, () => null);
 /** The card open now (the tests) */
 export const squadModeCardNow = modeCard.get;
+/** The card of the mode playing open (the tower's folded behind it: 回去 › on the tower's card is this) */
 export function openSquadModeCard() {
   const mode = room.get()?.mode;
-  if (mode) modeCard.set(mode.at);
+  if (mode) showModeCard(mode.at);
 }
-export const closeSquadModeCard = () => modeCard.set(null);
+/** Shut with ×: the tower folded behind it stays shut */
+export function closeSquadModeCard() {
+  modeCard.set(null);
+  behind.set(false);
+}
 
 /**
  * 凯尔希随堂测: your answers in the round begun at `at` (its initiator's 开始), by question number, as picked and then
@@ -202,6 +208,42 @@ function askAgain(r: SquadRoom) {
 const danceJudge = kept<{ ok: boolean; at: number } | null>(null);
 export const useSquadDanceJudge = () => useSyncExternalStore(danceJudge.on, danceJudge.get, () => null);
 export const squadDanceJudgeNow = danceJudge.get;
+
+/**
+ * 基建加盖's card (SquadStack.tsx): open or not. It and a mode's card are never open together. The tower's opened
+ * shuts the mode's (a strip on the tower's top leads back to the mode you are in); a mode's opened, a match starting
+ * with you in it too, folds the tower's into a strip on its top (behind; 回去 › opens it again). A mode's card gone
+ * with its mode (not shut with ×), the tower's folded behind it shows again.
+ */
+const stackOpen = kept(false);
+const behind = kept(false);
+/** The round you last put a block on, and when (this page): the board's 新纪录 is judged on it */
+const stackMine = kept<{ round: number; at: number } | null>(null);
+export const useSquadStackOpen = () => useSyncExternalStore(stackOpen.on, stackOpen.get, () => false);
+export const useSquadStackBehind = () => useSyncExternalStore(behind.on, behind.get, () => false);
+export const useSquadStackMine = () => useSyncExternalStore(stackMine.on, stackMine.get, () => null);
+/** What is open now (the tests) */
+export const squadStackOpenNow = stackOpen.get;
+export const squadStackBehindNow = behind.get;
+/** 基建加盖's card open (「玩」's tile, 回去 › on a mode's card): a mode's card open shut */
+export function openSquadStack() {
+  modeCard.set(null);
+  behind.set(false);
+  stackOpen.set(true);
+}
+/** Shut with ×: nothing behind it any more */
+export function closeSquadStack() {
+  stackOpen.set(false);
+  behind.set(false);
+}
+/** A mode's card open (at: the mode's start): the tower's, if open, folded behind it */
+function showModeCard(at: number) {
+  if (stackOpen.get()) {
+    stackOpen.set(false);
+    behind.set(true);
+  }
+  modeCard.set(at);
+}
 
 /** 篝火's card (SquadFire.tsx), over the map: 「玩」 → 添柴 opens it */
 const fireOpen = kept(false);
@@ -364,8 +406,11 @@ function setRoom(next: SquadRoom | null) {
     touched.set(NO_TOUCHED);
     toMe.set(null);
     asked.clear();
-    // out of the room: its fire goes too, and what it played
+    // out of the room: its fire goes too, its tower, and what it played
     fireOpen.set(false);
+    stackOpen.set(false);
+    behind.set(false);
+    stackMine.set(null);
     modeCard.set(null);
     danceJudge.set(null);
     quizPicks.set(null);
@@ -494,6 +539,38 @@ export function heardSquad(raw: unknown) {
     return;
   }
   // 企鹅物流急件赛: what the others did, into their lanes (your own went in as you did it)
+  // 基建加盖: the others' blocks onto the tower (yours went on as you put it), each told as the layer it is; a page out
+  // of step (a layer it has as another's block, or one further on than its top) reads the room again
+  if (tell.t === "stack") {
+    let s = stackNow(r.stack, squadServerNow());
+    let lost = false;
+    for (const it of tell.items) {
+      // a round gone by (rebuilt here already)
+      if (it.round < s.round) continue;
+      if (it.round === s.round && it.n <= s.n) {
+        const b = s.top[s.top.length - 1 - (s.n - it.n)];
+        if (!b || b.h !== it.h || b.at !== it.at) lost = true;
+        continue;
+      }
+      if (it.round !== s.round || it.n !== s.n + 1) {
+        lost = true;
+        continue;
+      }
+      s = {
+        ...s,
+        n: it.n,
+        sum: s.sum + it.x,
+        top: [...s.top, { h: it.h, x: it.x, at: it.at }].slice(-STACK_TOP),
+        swingAt: it.swingAt,
+        ...(it.falls ? { fell: { at: it.at, height: it.n - 1 } } : {}),
+        best: it.falls ? s.best : Math.max(s.best, it.n),
+        busy: s.busy.includes(it.h) ? s.busy : [...s.busy, it.h].sort((x, y) => x - y),
+      };
+    }
+    room.set(withWant({ ...r, stack: s }));
+    if (lost) void loadSquadRoom().catch(() => {});
+    return;
+  }
   if (tell.t === "race") {
     const mode = r.mode;
     if (mode?.kind !== "race" || mode.wait) return;
@@ -530,11 +607,11 @@ export function heardSquad(raw: unknown) {
       if (what.kind === "mode") {
         if (!next.mode && what.on === false && what.h === undefined && !what.lobby && was) addFloat(T.squad.modes.ended[was]);
         if (what.lobby) lobbyFloat(r, next, what);
-        // a match started with you in it: its card opens
+        // a match started with you in it: its card opens (the tower's folded behind it)
         const m = next.mode;
         if (what.lobby === "start" && m && !m.wait && m.in.some((x) => x.h === next.you)) {
           askedNow(m.at);
-          modeCard.set(m.at);
+          showModeCard(m.at);
         }
         return;
       }
@@ -608,6 +685,8 @@ export async function saveSquadCard(next: SquadCard | null, show?: boolean, off?
 
 /** 火焰周榜 (src/lib/server/fireBoard.ts): this week's or last week's, and the room the player is in on it */
 export const loadFireBoard = (week: "this" | "last") => squadApi.fireBoard(week);
+/** 基建周榜 (this week's or last week's), as 火焰周榜 */
+export const loadStackBoard = (week: "this" | "last") => squadApi.stackBoard(week);
 
 export async function openSquadRoom(form: { key: string; server: string; level: number; tags: number[]; friendsOnly: boolean }) {
   const { room: r } = await squadApi.open(form);
@@ -760,7 +839,7 @@ export async function squadOpenMode(kind: SquadModeKind) {
   await timed(() => squadApi.mode(kind));
   const r = await loadSquadRoom();
   if (r?.mode) askedNow(r.mode.at);
-  if (r?.mode) modeCard.set(r.mode.at);
+  if (r?.mode) showModeCard(r.mode.at);
   return r;
 }
 
@@ -773,7 +852,7 @@ export async function squadModeIn(into: boolean) {
   danceJudge.set(null);
   const r = await loadSquadRoom();
   if (r?.mode) askedNow(r.mode.at);
-  if (into && r?.mode) modeCard.set(r.mode.at);
+  if (into && r?.mode) showModeCard(r.mode.at);
   return r;
 }
 
@@ -781,7 +860,7 @@ export async function squadModeIn(into: boolean) {
 export async function squadStartMatch() {
   await timed(() => squadApi.start());
   const r = await loadSquadRoom();
-  if (r?.mode) modeCard.set(r.mode.at);
+  if (r?.mode) showModeCard(r.mode.at);
   return r;
 }
 
@@ -899,40 +978,30 @@ export async function squadRaceJump() {
 }
 
 /**
- * 基建加盖's 放, now on the server's clock as this page has it, in the round this page has: your roach on the tower at
- * once where the swing is (as the server will put it, the tower falling as it will), a block out of your hand, then the
- * room as the server has it (it tells the room). Refused (too soon, an empty hand, the tower fell or another round
- * began meanwhile), the room read again. Null when nothing was sent (none playing, or the tower down).
+ * 基建加盖's 放, now on the server's clock as this page has it, on the room's tower as this page has it (a fallen one
+ * rebuilt in time: towerNow): shown at once where the swing is (as the server will put it), then as the server took
+ * it; refused, the room read again. Null when nothing was sent (the tower waiting to be rebuilt).
  */
 export async function squadStackDrop() {
   const r = room.get();
-  const mode = r?.mode;
-  if (!r || mode?.kind !== "stack" || mode.fell) return null;
-  const at = Math.max(squadServerNow(), mode.roundAt);
-  const x = Math.round(stackSwing(mode.roundAt, at)) || 0;
-  const put = stackPut(mode.blocks, x);
-  const blocks = [...mode.blocks, { h: r.you, x, at }];
-  const after = woodAfter(mode.hand?.n ?? STACK_HAND_MAX, mode.hand?.at ?? null, at, STACK_HAND_MAX, STACK_HAND_EVERY_MS);
-  const fell = put.falls ? { fell: { at, height: mode.blocks.length } } : {};
-  const best = put.falls ? mode.best : Math.max(mode.best, blocks.length);
-  room.set(withWant({ ...r, mode: { ...mode, blocks, ...fell, best, hand: { n: after.wood, at: after.at }, endsAt: Math.min(mode.until, at + STACK_IDLE_MS) } }));
+  if (!r) return null;
+  const at = squadServerNow();
+  const tower = stackNow(r.stack, at);
+  if (tower.fell) return null;
+  const t = Math.max(at, tower.at, tower.top.at(-1)?.at ?? 0);
+  const x = Math.round(stackSwing(tower.swingAt, tower.n, t)) || 0;
+  const put = stackPut(tower, x);
+  const n = tower.n + 1;
+  const top = [...tower.top, { h: r.you, x, at: t }].slice(-STACK_TOP);
+  const swingAt = !put.falls && n % STACK_GEAR_EVERY === 0 ? stackShift(tower.swingAt, tower.n, n, t) : tower.swingAt;
+  const fell = put.falls ? { fell: { at: t, height: tower.n } } : {};
+  const best = put.falls ? tower.best : Math.max(tower.best, n);
+  const busy = tower.busy.includes(r.you) ? tower.busy : [...tower.busy, r.you].sort((a, b) => a - b);
+  stackMine.set({ round: tower.round, at: Date.now() });
+  // from the tower as it is now (one rebuilt keeps nothing of the round before)
+  room.set(withWant({ ...r, stack: { ...tower, n, sum: tower.sum + x, top, ...fell, swingAt, best, busy } }));
   try {
-    return await timed(() => squadApi.stack({ do: "drop", round: mode.round, at }));
-  } catch (e) {
-    void loadSquadRoom().catch(() => {});
-    throw e;
-  }
-}
-
-/** 基建加盖's 再来一轮, in the round this page has (one another began first is nothing): the room as it is then */
-export async function squadStackAgain() {
-  const r = room.get();
-  const mode = r?.mode;
-  if (!r || mode?.kind !== "stack") return null;
-  try {
-    const res = await timed(() => squadApi.stack({ do: "again", round: mode.round }));
-    await loadSquadRoom();
-    return res;
+    return await timed(() => squadApi.stack({ do: "drop", round: tower.round, at: t }));
   } catch (e) {
     void loadSquadRoom().catch(() => {});
     throw e;
@@ -1072,6 +1141,9 @@ export async function declareSquadRoom(from: string[] | null) {
 
 /** Signed out: nothing kept */
 export function forgetSquadPage() {
+  // the server's clock as learnt: learnt again from the next answers
+  offs.length = 0;
+  off = 0;
   roundWant = null;
   raceTaps = 0;
   if (raceTimer) window.clearTimeout(raceTimer);

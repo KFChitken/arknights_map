@@ -755,12 +755,9 @@ export const zh = {
       begunAlready: "已经开始了。",
       notThisRound: "这局开始以后才进来的，下一局再答。",
       noMatch: "现在没有在等人的小游戏。",
-      notStacking: "先加入才能放。",
-      stackFell: "塔已经塌了，点「再来一轮」接着搭。",
-      stackStanding: "这一轮还没塌，接着放吧。",
+      stackRebuilding: "塔刚塌，新地基马上打好。",
       stackNewRound: "刚开了新的一轮，看准了再放。",
       stackSlow: "慢点，每秒只收 1 块。",
-      stackEmpty: "手里没块了，等它长出来。",
     },
     routes: {
       world: {
@@ -911,6 +908,8 @@ export const zh = {
         squadB: "一起卫戍：",
         squadFire: "{b}每个房间这周最旺到几级、每人往这堆火添了几根柴，留两周后删除；火焰周榜上写添得最多的几个人的名字（卫戍名片里能关），不写几点。",
         squadFireB: "篝火：",
+        squadStack: "{b}每座塔这周最高几层、每人往塔上放了几块，留两周后删除；基建周榜上写放得最多的几个人的名字（卫戍名片里能关），不写几点。",
+        squadStackB: "基建加盖：",
         haimao: "{b}你和她之间的触碰（偷偷还是大胆、什么时候）和她回你的话、你们成为触须之交的时间；她对你的好感度（0 到 100，只涨不掉），和今天大胆碰她加过好感度没有；和她聊剧情聊到第几天、每天选了哪个回答、看没看过 ALL END、每天一句轮到第几句；她的 ALL 转盘你转过没有、什么时候转的、指针先停在哪一格。香艳制作人不是真人，是粉丝玩梗，不是本人，和鹰角没关系；这些记录只有你自己看得到。",
         haimaoB: "香艳制作人：",
         away: "{b}佩丽卡监督第一次出现时，会问你能不能记时间。你点「好」以后，{site}会记下你最后一次在看网站的时间，精确到秒：网页开着的时候，大约每分钟告诉服务器一声「还在」，切走或关掉时再说一声「走了」。这个时间只存一个，每次覆盖旧的，只用来让她告诉你离开了多久；她报时的消息只留最近 5 条。别人看不到，管理页也不显示，不记 IP。在「资料」里关掉「佩丽卡的离开计时」，就不再记，已经存的时间和她报时的消息和监督周报也一起删掉。",
@@ -2335,8 +2334,8 @@ export const zh = {
       showNameHint: "关着时列表上写「队友」；你的触须之交总能看到你的名字",
       throwMe: "别人扔我",
       throwMeHint: "关着时房间里的人扔不了东西给你",
-      fireHide: "火焰周榜写我的名字",
-      fireHideHint: "关着时周榜上写『一位舟P』，称号照拿",
+      fireHide: "周榜写我的名字",
+      fireHideHint: "关着时火焰周榜、基建周榜上都写『一位舟P』，称号照拿",
       first: "第一次用，先填名片：选好核心盟约（或者随机应变）就能走。",
       core: "核心盟约",
       coreHint: "必选，可以选随机应变",
@@ -2903,18 +2902,16 @@ export const zh = {
       waitTag: "等人 {n}/4",
       nextTag: "下一局",
       names: { dance: "龙门广场舞", quiz: "凯尔希随堂测", gift: "W 的礼物", race: "企鹅物流急件赛", stack: "基建加盖" },
-      /** On a tile of the room, for one in it */
+      /** On a tile of the room, for one in it (stack: one who put a block on the tower within the last 30 seconds) */
       tileTags: { dance: "在跳", quiz: "在答", gift: "在传", race: "在跑", stack: "在搭" },
       /** Said to those who were in it or looking at it, as it ends */
-      ended: { dance: "广场舞散场了", quiz: "凯尔希随堂测结束了", gift: "W 的礼物散场了", race: "企鹅物流急件赛跑完了", stack: "基建加盖散场了" },
+      ended: { dance: "广场舞散场了", quiz: "凯尔希随堂测结束了", gift: "W 的礼物散场了", race: "企鹅物流急件赛跑完了" },
       /** To one in the room not in it: a line at the top ({mode} its name, in bold) */
       invites: {
         dance: "{name} 开了{mode}（{n} 人在跳），加入？",
-        stack: "{name} 开了{mode}（{n} 人在搭），加入？",
       },
       invitesNoBy: {
         dance: "{mode}正在跳（{n} 人），加入？",
-        stack: "{mode}正在搭（{n} 人），加入？",
       },
       /** A match waiting, to one not ready ({name} its initiator, {n} ready of 4); NoBy while TA is not in the room */
       waitInvites: "{name} 想玩{mode}（{n}/4 准备了），来吗？",
@@ -2979,8 +2976,12 @@ export const zh = {
       /** 钓鳞's tile read out ({state}: how its line stands) */
       fishLabel: "钓鳞：{state}",
       fishStates: { rest: "没在钓", line: "浮漂在水里", bite: "咬钩了" },
-      /** 添柴's fire level on its tile */
+      /** The two groups: those always there, and the modes one at a time */
+      anytime: "随时能玩",
+      oneAtATime: "一次玩一个 · 比赛要先等人",
+      /** 添柴's fire level on its tile; 基建加盖's tower's height on its */
       level: "Lv.{n}",
+      layers: "{n} 层",
       /** On a mode's tile: you in it, or it playing (join) */
       in: "在玩",
       join: "加入",
@@ -3079,7 +3080,7 @@ export const zh = {
       pipOn: "收回小窗",
       pipOnLabel: "关上浮在最上面的小窗",
       /** Each mode's name, short, on its strip: {mode} · {what} */
-      short: { dance: "广场舞", quiz: "随堂测", gift: "W 的礼物", race: "急件赛", stack: "基建加盖" },
+      short: { dance: "广场舞", quiz: "随堂测", gift: "W 的礼物", race: "急件赛" },
       line: "{mode} · {what}",
       /** One not in the mode: how many are */
       people: "{n} 人在玩",
@@ -3090,7 +3091,6 @@ export const zh = {
       raceNext: "下一场你在里面",
       startsIn: "{s} 秒后开始",
       done: "这一局完了",
-      stackNow: "{n} 层 · 手里 {k} 块",
       /** 钓鳞's strip: the pull at the bite */
       pull: "收竿",
       /** The three at the foot, and their pages */
@@ -3102,37 +3102,101 @@ export const zh = {
       said: "{name}：{line}",
       back: "返回",
     },
-    /** 基建加盖 (src/components/app/squad/SquadStack.tsx), a mode of 玩点什么 */
+    /** 基建加盖 (src/components/app/squad/SquadStack.tsx), the room's own tower, always there beside the modes */
     stack: {
       title: "基建加盖",
-      /** The pill by the room's name, and the card's head */
+      /** The card's head: the tower's round; how many put a block within the last 30 seconds */
       count: "基建加盖 · 第 {n} 轮",
       people: "{n} 人在搭",
       /** The tower's height ({n} big, its unit small after it), the room's highest */
       unit: "层",
       best: "房间纪录 {n} 层",
-      /** Top right: till it ends with no block put ({left}: m:ss), or once the tower fell */
-      idle: "1 分钟没人放就结束 · 还剩 {left}",
-      idleFell: "没人接着搭 · {left} 后散场",
-      /** Your hand: its blocks ({n} of {max}), the next one's growing */
-      hand: "手里",
-      handCount: "{n} / {max}",
-      handLabel: "手里 {n} 块，最多 {max} 块",
-      full: "满了，一口气放完再等",
-      next: "下一块 {left} 后长出来",
+      /** Top right: the swing's gear ({n}), the fastest one's ({n} the last), what makes it go faster */
+      gear: "晃速 第 {n} 档",
+      gearTop: "晃速 第 {n} 档 · 最快了",
+      gearNote: "每高 10 层快一点",
+      /** Bottom left, the tower taller than the stage shows */
+      below: "↓ 下面还有 {n} 层",
       drop: "放",
       dropLabel: "放下你的蟑螂",
-      empty: "没块了",
-      again: "再来一轮",
-      /** Said over the tower */
-      fell: "塌了！这一轮 {n} 层",
+      /** 放 while a tower that fell is being rebuilt (3 seconds) */
+      rebuilding: "在打地基",
+      /** Said over the tower: it fell (the round's height), it sways, too soon after your last, it went up a gear, a teammate's block */
+      fell: "塌了！这一轮 {n} 层 · 3 秒后打新地基",
       wobble: "歪了，塔在晃",
       slow: "慢点，每秒只收 1 块",
-      join: "加入一起搭",
-      watching: "你在围观，加入就能放块",
-      leave: "不搭了，去围观",
-      note: "块就是你的蟑螂：它在塔顶左右晃，点「放」落下。放歪了塔会晃，重心出了塔底就塌。每人最多攒 3 块、30 秒长 1 块；服务器每人每秒最多收 1 块。塌了这一轮结束，记下层数，点「再来一轮」接着搭；1 分钟没人放就散场。房间记最高。",
+      gearUp: "高了 10 层，晃得快一点了",
+      mate: "{name} 也放了一块",
+      /** 基建周榜's way in, under the tower: you named on it, the room's tower higher than your highest, not named, the tower counting in last week */
+      boardBest: "你这周最高 {n} 层",
+      boardBestNew: "你这周最高 {n} 层（新纪录！）",
+      boardRank: "周榜第 {r} 名 · 看基建周榜 ›",
+      boardOff: "你这周还没上榜",
+      boardOffSub: "至少 2 个人各放够 5 块 · 看基建周榜 ›",
+      boardOld: "这座塔算在上周的榜里",
+      boardOldSub: "塌了以后新的一座算这周 · 看基建周榜 ›",
+      /**
+       * One card folded into a strip on top of the other (only one open at a time): the mode you are in ({mode} its
+       * name) as it plays, your lane in a race, a match waiting ({n} ready of 4); the tower; and the way back to it
+       */
+      backModes: { dance: "{mode}在跳", quiz: "{mode}在答", gift: "{mode}在传", race: "{mode}在跑" },
+      backLane: " · 你在第 {k} 道",
+      backWait: "{mode}在等人 {n}/4",
+      backStack: "基建加盖 · {n} 层",
+      back: "回去 ›",
+      /** The small window's strip: the tower's height, or it fell ({n} its height) */
+      mini: "基建加盖 · {n} 层",
+      miniFell: "塌了！{n} 层 · 3 秒后打新地基",
+      note: "塔一直在，谁都能随时放，不用轮流：大家的蟑螂在同一个地方一起晃，谁先点谁先落；几个人同一下点，就叠在同一个位置。每人每秒最多 1 块。放歪了塔会晃，重心出了塔底就塌；塌了 3 秒后自动打新地基。塔每高 10 层晃得快一点（最多快一倍）。房间纪录记最高的一座。",
       close: "关上基建加盖",
+    },
+    /** 基建周榜 (src/components/app/squad/SquadStackBoard.tsx), opened from 基建加盖's card, as 火焰周榜 */
+    stackBoard: {
+      title: "基建周榜",
+      back: "回到基建加盖",
+      thisWeek: "这周 · 周一凌晨 4 点（北京时间）结算 · 还有 {left}",
+      lastWeek: "上周 · 结算完发了称号，戴到下周一凌晨 4 点",
+      leftDays: "{d} 天 {h} 小时",
+      leftHours: "{h} 小时 {m} 分",
+      leftMinutes: "{m} 分钟",
+      banner: "前 100 座塔，写着的人都拿一周限定称号",
+      bannerTitle: "「基建狂魔」",
+      tabs: { this: "这周", last: "上周" },
+      line: "称号线 · 前 100 座塔，这周 {n} 人",
+      /** A tower's height on a row */
+      layers: "{n} 层",
+      hidden: "一位舟P",
+      mine: "你们这座",
+      rank: "第 {n} 名",
+      unranked: "未上榜",
+      /** Under 你们这座: the first of these that is so; none: no tower to pin */
+      says: {
+        old: "这座塔算在上周的榜里",
+        in: "在前 100 座里：照现在这样，你们 {n} 个这周能拿称号",
+        short: "在前 100 座里：你在这座再放 {k} 块就能写上名字",
+        below: "离前 100 还差 {d} 层",
+        off: "还没上榜：至少 2 个人各放够 5 块才上榜",
+        none: "你这周还没往塔上放过块",
+      },
+      lastDone: "上周已经结算，称号发好了：名字旁边有小塔的就是。",
+      lastGot: "上周 {n} 人拿到「基建狂魔」（前 100 座塔上写着的人）。",
+      lastEmpty: "上周没有塔上榜。",
+      thisEmpty: "这周还没有塔上榜：至少 2 个人各放够 5 块就能上。",
+      note: "一行是一座塔：它这周最高搭到几层，写着放块最多的几个人（最多 4 个，每人在这座塔上至少放过 5 块）。同样高的，先搭到的在前。至少 2 个真人一起搭的才上榜，每人一周只算最高的那座。不写几点搭的。",
+      loading: "正在看榜…",
+      failed: "没看到榜，连不上服务器。",
+      retry: "再试一次",
+      /** 基建狂魔, as the banner opens it */
+      titleHead: "限定称号「基建狂魔」",
+      titleSub: "每周一凌晨 4 点结算完马上发，戴到下周一凌晨 4 点。",
+      titleBack: "基建周榜",
+      titleSteps: [
+        "下次打开网站，弹「获得新称号」",
+        "戴上以后，资料卡上名字下面就是它",
+        "「我的称号」里多一格，写着还剩几天",
+        "卫戍房间里，名字旁边一个小塔",
+      ],
+      titleNote: "限时的称号不算进「我的称号」的总数，和「石棺里的苏醒」一样，别人看不到你还剩几天。到点它自己不见了：资料卡、我的称号、房间里都没了，戴着的自动摘下。下周又有塔进前 100，结算完接着戴一周。",
     },
     /** W 的礼物 (src/components/app/squad/SquadGift.tsx), a mode of 玩点什么 */
     gift: {
@@ -5658,6 +5722,15 @@ export const zh = {
         condition: "火焰周榜前 100 个房间里写着名字。每周一凌晨 4 点（北京时间）结算完发，戴一周。",
         lockedHint: "限时的，拿到才出现在这里",
         quote: "卫戍的夜很长，你们那堆火烧到了天亮。",
+        /** Its place as it pops up */
+        place: "上周火焰周榜第 {n} 名",
+      },
+      stacktop: {
+        name: "基建狂魔",
+        condition: "基建周榜前 100 座塔上写着名字。每周一凌晨 4 点（北京时间）结算完发，戴一周。",
+        lockedHint: "限时的，拿到才出现在这里",
+        quote: "没有图纸，没有地基，照样盖到了天上。",
+        place: "上周基建周榜第 {n} 名",
       },
       tipsy: {
         name: "当一回酒神",
@@ -5827,7 +5900,6 @@ export const zh = {
       /** A title given for a week by a place on a board (篝火守夜人): as it pops up, and its cell in 我的称号 */
       ranked: {
         sub: "获得新称号 · 限定一周",
-        place: "上周火焰周榜第 {n} 名",
         until: "戴到 {date}（周一）凌晨 4 点",
         cell: "限定 · {left}",
       },

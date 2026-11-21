@@ -94,6 +94,11 @@ export default async function Privacy() {
             {fmtNodes(T.server.privacy.collect.squadFire, { b: <strong>{T.server.privacy.collect.squadFireB}</strong> })}
           </li>
         )}
+        {squadMode() === "on" && (
+          <li>
+            {fmtNodes(T.server.privacy.collect.squadStack, { b: <strong>{T.server.privacy.collect.squadStackB}</strong> })}
+          </li>
+        )}
         {/* only once she is out for everyone (HAIMAO=on, src/lib/server/env.ts) */}
         {haimaoMode() === "on" && (
           <li>

@@ -8,6 +8,8 @@
 
 /* ---- 「玩」's tiles (SquadPlays.tsx): every game, an icon and its name ---- */
 .sq-pg .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.sq-pg .grp { margin: 0 2px 6px; color: #6b7280; font-size: 12px; font-weight: 700; }
+.sq-pg .tiles + .grp { margin-top: 14px; }
 .sq-pg .tile {
   position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; padding: 10px 4px 8px; border: 1px solid #e3e5e8; border-radius: 14px;
   background: #fff; color: #1b1d22; font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent;
@@ -30,6 +32,7 @@
   font-variant-numeric: tabular-nums;
 }
 .sq-pg .pic .lv { top: -6px; right: -14px; background: #ff6a1f; color: #fff; }
+.sq-pg .k-stack .pic .lv { background: #5b2fa8; }
 .sq-pg .pic .wood { bottom: -6px; right: -12px; display: flex; align-items: center; gap: 2px; background: #7a4a22; color: #fff; }
 .sq-pg .pic .wood i { display: block; width: 9px; height: 4px; border-radius: 2px; background: #e0aa70; transform: rotate(-20deg); }
 .sq-pg .pic .tag { top: -6px; right: -12px; background: #eceef1; color: #5b6170; }
@@ -483,11 +486,14 @@
 .sq-stack .stage { position: relative; height: 410px; overflow: hidden; border-radius: 16px; background: linear-gradient(180deg, #cfe6f7 0%, #eef6fb 100%); }
 .sq-stack .stage > i, .sq-stack .stage > span, .sq-stack .stage > div { position: absolute; display: block; }
 .sq-stack .ground { left: 0; right: 0; bottom: 0; background: linear-gradient(180deg, #e9e2d3 0%, #ddd3bf 100%); }
-.sq-stack .stage > .hgt { left: 12px; top: 10px; display: flex; flex-direction: column; gap: 2px; }
+.sq-stack .stage > .hgt { z-index: 2; left: 12px; top: 10px; display: flex; flex-direction: column; gap: 2px; }
 .sq-stack .hgt b { font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }
 .sq-stack .hgt small { font-size: 13px; font-weight: 700; }
 .sq-stack .hgt span { color: #4b5160; font-size: 11.5px; }
-.sq-stack .idle { right: 12px; top: 12px; max-width: 58%; color: #4b5160; font-size: 11.5px; text-align: right; font-variant-numeric: tabular-nums; }
+/* top right: the swing's gear */
+.sq-stack .stage > .gear { z-index: 2; right: 12px; top: 10px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.sq-stack .gear em { padding: 1px 8px; border-radius: 999px; background: #ede4fb; color: #5b2fa8; font-size: 11.5px; font-style: normal; font-weight: 800; white-space: nowrap; }
+.sq-stack .gear small { color: #6b7280; font-size: 11px; }
 .sq-stack .base { left: calc(50% - 48px); width: 96px; height: 10px; border-radius: 3px; background: #8a6b45; }
 .sq-stack .tw { inset: 0; transform-origin: 50% 100%; }
 .sq-stack .tw.sway { animation: sqs-sway 0.5s ease-in-out 3; }
@@ -499,42 +505,48 @@
 .sq-stack .swing.dim { opacity: 0.25; }
 .sq-stack .sw { display: flex; flex-direction: column; align-items: center; line-height: 0; will-change: transform; }
 .sq-stack .sw > i { display: block; width: 2px; height: 14px; margin-top: 2px; background: rgba(27, 29, 34, 0.25); }
-.sq-stack .smsg {
-  left: 50%; top: 64px; transform: translateX(-50%); padding: 5px 12px; border-radius: 12px; background: #1b1d22; color: #fff; font-size: 13px; font-weight: 700; white-space: nowrap;
-  animation: sqs-pop 0.25s ease-out both;
+/* bottom left: the layers under those shown; over the tower, a teammate's block and the lines */
+.sq-stack .stage > .below {
+  z-index: 2; left: 12px; bottom: 10px; padding: 2px 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.8); color: #4b5160; font-size: 11px; font-weight: 700;
 }
-/* under it: your hand and 放 */
-.sq-stack .hand { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
-.sq-stack .hl { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.sq-stack .pips { display: flex; align-items: center; gap: 6px; }
-.sq-stack .pips b { font-size: 14px; }
-.sq-stack .pips i { display: block; width: 22px; height: 16px; border-radius: 4px; background: #e3e5e8; }
-.sq-stack .pips i.on { background: #7a4fd0; }
-.sq-stack .pips span { font-weight: 700; font-variant-numeric: tabular-nums; }
-.sq-stack .regen { color: #6b7280; font-size: 12px; font-variant-numeric: tabular-nums; }
+.sq-stack .stage > .mate {
+  z-index: 3; right: 12px; top: 64px; max-width: 60%; overflow: hidden; padding: 4px 10px; border-radius: 10px; background: #fff; color: #3b3f47; font-size: 12px; font-weight: 700;
+  white-space: nowrap; text-overflow: ellipsis; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); animation: sqs-mate 0.25s ease-out both;
+}
+.sq-stack .smsg {
+  z-index: 3; left: 50%; top: 96px; transform: translateX(-50%); padding: 5px 12px; border-radius: 12px; background: #1b1d22; color: #fff; font-size: 13px; font-weight: 700;
+  white-space: nowrap; animation: sqs-pop 0.25s ease-out both;
+}
+/* under it: the way to 基建周榜, and 放 */
+.sq-stack .foot { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.sq-stack .way {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; padding: 8px 10px; border: 0; border-radius: 12px; background: #f6f3fd;
+  color: #1b1d22; font: inherit; text-align: left; cursor: pointer;
+}
+.sq-stack .way b { max-width: 100%; font-size: 13px; }
+.sq-stack .way span { max-width: 100%; color: #5b2fa8; font-size: 12px; font-weight: 700; }
 .sq-stack .put {
-  flex: none; width: 130px; height: 60px; border: 0; border-radius: 14px; background: #7a4fd0; color: #fff; font: inherit; font-size: 18px; font-weight: 900; cursor: pointer;
+  flex: none; width: 128px; height: 60px; border: 0; border-radius: 14px; background: #7a4fd0; color: #fff; font: inherit; font-size: 18px; font-weight: 900; cursor: pointer;
   box-shadow: 0 4px 0 #5b2fa8; touch-action: manipulation; user-select: none; -webkit-user-select: none;
 }
 .sq-stack .put:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 2px 0 #5b2fa8; }
-.sq-stack .put.again { background: #1b1d22; box-shadow: none; }
-.sq-stack .put:disabled { opacity: 1; background: #e3e5e8; color: #9aa0aa; box-shadow: none; cursor: default; }
-.sq-stack .put.again:disabled { background: #1b1d22; color: #fff; opacity: 0.6; }
-.sq-stack .watch { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 8px 10px; border-radius: 12px; background: #f6f7f9; }
-.sq-stack .watch span { flex: 1; min-width: 0; color: #4b5160; font-size: 12.5px; line-height: 1.45; }
-.sq-stack .watch button { flex: none; height: 36px; padding: 0 14px; border: 0; border-radius: 10px; background: #7a4fd0; color: #fff; font: inherit; font-size: 13px; font-weight: 900; cursor: pointer; }
-.sq-stack .watch button:disabled { opacity: 0.6; cursor: default; }
-.sq-stack .leave {
-  width: 100%; height: 34px; margin-top: 10px; border: 0; border-radius: 10px; background: #f1f2f4; color: #1b1d22; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
-}
-.sq-stack .leave:disabled { opacity: 0.6; cursor: default; }
+.sq-stack .put:disabled { opacity: 1; background: #e3e5e8; color: #9aa0aa; font-size: 15px; box-shadow: none; cursor: default; }
 .sq-stack .rmsg { margin: 8px 2px 0; color: #b42318; font-size: 12.5px; }
 .sq-stack .note { margin: 12px 2px 0; color: #6b7280; font-size: 11.5px; line-height: 1.6; }
+/* one card folded into a strip on top of the other: back to the mode you are in, or to the tower */
+.sq-back {
+  display: flex; align-items: center; gap: 8px; width: 100%; margin: 0 0 8px; padding: 8px 12px; box-sizing: border-box; border: 0; border-radius: 12px; background: #ffd23f;
+  color: #1b1d22; font: inherit; font-size: 12.5px; font-weight: 800; text-align: left; cursor: pointer;
+}
+.sq-back span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sq-back b { flex: none; }
+.sq-back.stack { background: #ede4fb; color: #3d1d7a; }
 @keyframes sqs-sway { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-2.5deg); } 75% { transform: rotate(2.5deg); } }
 @keyframes sqs-drop { from { transform: translateY(-20px); } to { transform: none; } }
 @keyframes sqs-fall-l { 0% { transform: translate(0, 0) rotate(0); } 100% { transform: translate(-120px, 260px) rotate(-200deg); opacity: 0; } }
 @keyframes sqs-fall-r { 0% { transform: translate(0, 0) rotate(0); } 100% { transform: translate(120px, 260px) rotate(200deg); opacity: 0; } }
 @keyframes sqs-pop { 0% { transform: translateX(-50%) scale(0.5); opacity: 0; } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
+@keyframes sqs-mate { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 @keyframes sqr-run { 0%, 100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-4px) rotate(4deg); } }
 @keyframes sqr-spin { 0% { transform: rotate(0); } 100% { transform: rotate(360deg); } }
 @keyframes sqr-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
@@ -555,7 +567,7 @@
   .sq-minv, .sq-dance .judge, .sq-dance .lt, .sq-quiz .eq.on i, .sq-quiz .stage .lead, .sq-quiz .res span { animation: none; }
   .sq-gift .drum.on::before, .sq-gift .gw .spark, .sq-gift .gw .bang, .sq-gift .gw .ladle, .sq-gift .gw .box, .sq-gift .boom { animation: none; }
   .sq-race .racer .rr, .sq-race .racer .zoom, .sq-race .racer .crown, .sq-race .tip, .sq-race .van .stamp { animation: none; }
-  .sq-stack .tw.sway, .sq-stack .blk.drop, .sq-stack .smsg { animation: none; }
+  .sq-stack .tw.sway, .sq-stack .blk.drop, .sq-stack .smsg, .sq-stack .mate { animation: none; }
 }
 /* ---- a match waiting for people (SquadLobby.tsx), as the canvas 「房主开局」 has it ---- */
 .sq-lobby {

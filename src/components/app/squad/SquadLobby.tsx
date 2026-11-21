@@ -7,6 +7,7 @@ import { GIFT_SEATS, type LobbyMode } from "@/lib/squadMode";
 import { WorldError } from "@/lib/world/types";
 import { ModePlayIcon } from "./SquadPlays";
 import { SquadRoach } from "./SquadRoach";
+import { StackBehind } from "./SquadStack";
 import { closeSquadModeCard, sayInSquad, squadModeIn, squadStartMatch, useSquadModeCard, useSquadRoom } from "./squading";
 import "./squadModes.css";
 
@@ -96,6 +97,7 @@ export function LobbyView({
           ×
         </button>
       </header>
+      <StackBehind />
       <div className={`lpanel k-${mode.kind}`}>
         <div className="lhead">
           <span className="ic">

@@ -45,7 +45,7 @@
 .sq-mini .ma.a-drop { background: #7a4fd0; }
 .sq-mini .ma:active:not(:disabled) { transform: translateY(1px); }
 .sq-mini .ma:disabled { background: #e3e5e8; color: #9aa0aa; }
-.sq-mini .ma.a-join:disabled, .sq-mini .ma.a-raceAgain:disabled, .sq-mini .ma.a-stackAgain:disabled { opacity: 0.6; }
+.sq-mini .ma.a-join:disabled, .sq-mini .ma.a-raceAgain:disabled { opacity: 0.6; }
 /* 基建加盖: the top block and your roach over it */
 .sq-mini .trk { position: relative; flex: none; width: 64px; height: 14px; border-radius: 7px; background: rgba(74, 38, 144, 0.14); }
 .sq-mini .trk i { position: absolute; display: block; transform: translateX(-50%); }

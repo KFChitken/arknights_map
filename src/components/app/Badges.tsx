@@ -389,8 +389,8 @@ export function NewBadge({ earned, onWear, onLater }: { earned: EarnedBadge; onW
         <div className="new-badge-banner">
           <strong>{b.name}</strong>
           <span>
-            {b.ranked && earned.serial
-              ? fmt(T.lib.badges.ranked.place, { n: earned.serial })
+            {b.ranked && b.place && earned.serial
+              ? fmt(b.place, { n: earned.serial })
               : `${earned.serial ? serialText(earned.serial) : b.code} · ${series?.code ?? ""}`}
           </span>
         </div>

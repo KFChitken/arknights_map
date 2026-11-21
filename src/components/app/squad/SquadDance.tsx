@@ -9,6 +9,7 @@ import { WorldError } from "@/lib/world/types";
 import { beatAt } from "../../disco/clock";
 import { isListening, listenLiteNow, listenTap, useListenPlayer } from "../listening";
 import { SquadRoach } from "./SquadRoach";
+import { StackBehind } from "./SquadStack";
 import { closeSquadModeCard, squadDanceSong, squadDanceTap, squadModeIn, squadServerNow, useSquadDanceJudge, useSquadModeCard, useSquadRoom } from "./squading";
 import "./squadModes.css";
 
@@ -264,6 +265,7 @@ export function DanceView({
           ×
         </button>
       </header>
+      <StackBehind />
       <div className="stage" ref={stageRef}>
         <i className="lt l" aria-hidden="true" />
         <i className="lt r" aria-hidden="true" />

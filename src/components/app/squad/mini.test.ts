@@ -2,9 +2,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { SquadMember, SquadRoom } from "@/lib/squad";
-import { GIFT_HOLD_MS, RACE_LEAD_MS, type GiftMode, type QuizAsk, type QuizMode, type RaceMode, type SquadMode, type StackMode } from "@/lib/squadMode";
+import { GIFT_HOLD_MS, RACE_LEAD_MS, type DanceMode, type GiftMode, type QuizAsk, type QuizMode, type RaceMode, type SquadMode, type SquadStack } from "@/lib/squadMode";
 import { MINI_H, MINI_W, miniWanted, pipSupported } from "./miniState";
-import { headOf, lastLines, MiniView, stripOf } from "./SquadMini";
+import { headOf, lastLines, MiniView, stackStrip, stripOf } from "./SquadMini";
 import type { QuizPicks, SquadLine } from "./squading";
 
 const NOW = Date.parse("2026-11-20T20:00:00+08:00");
@@ -40,6 +40,7 @@ const room = (more: Partial<SquadRoom> = {}): SquadRoom => ({
   members: [member(1), member(2), member(3), member(4)],
   wentAt: NOW - (32 * 60 + 10) * 1000,
   fire: { level: 0, prog: 0, at: NOW, by: null, top: 0, last: null, lastTop: 0, bestTop: 0 },
+  stack: { round: 1, at: NOW, n: 0, sum: 0, top: [], swingAt: NOW, best: 0, busy: [] },
   mode: null,
   endsAt: NOW + 3_600_000,
   endsWhy: "idle",
@@ -51,23 +52,23 @@ const room = (more: Partial<SquadRoom> = {}): SquadRoom => ({
   ...more,
 });
 const base = { by: 1, at: NOW - 30_000, endsAt: NOW + 50_000, until: NOW + 3_000_000 };
-const stack = (more: Partial<StackMode> = {}): StackMode => ({
-  kind: "stack",
-  ...base,
-  in: [
-    { h: 1, combo: 0 },
-    { h: 2, combo: 0 },
-  ],
+/** 基建加盖's tower: round 2, two blocks up */
+const tower = (more: Partial<SquadStack> = {}): SquadStack => ({
   round: 2,
-  roundAt: NOW - 10_000,
-  blocks: [
+  at: NOW - 10_000,
+  n: 2,
+  sum: 8,
+  top: [
     { h: 2, x: 0, at: NOW - 9_000 },
     { h: 1, x: 8, at: NOW - 6_000 },
   ],
+  swingAt: NOW - 10_000,
   best: 5,
-  hand: { n: 2, at: NOW - 9_000 },
+  busy: [1, 2],
   ...more,
 });
+/** 龙门广场舞, 企鹅物流 (h 2) dancing */
+const dance = (more: Partial<DanceMode> = {}): DanceMode => ({ kind: "dance", ...base, in: [{ h: 2, combo: 0 }], song: "s1", name: "Song", songAt: NOW - 1_000, ...more });
 /** W 的礼物's first round going since 1 s ago, its gift starting at your seat (0) */
 /** A match's round: begun as it was opened, the first of it, nobody asking for the next */
 const round = { begun: base.at, played: 0, next: [] as number[] };
@@ -171,8 +172,8 @@ describe("when the room shows small", () => {
 
 describe("the small room's strip", () => {
   it("asks one not in it to join, saying how many are", () => {
-    const s = stripOf(room(), stack({ in: [{ h: 2, combo: 0 }] }), NOW);
-    expect(s).toEqual({ kind: "stack", text: "基建加盖 · 1 人在玩", lit: false, acts: [{ act: "join", label: "加入", on: true }] });
+    const s = stripOf(room(), dance(), NOW);
+    expect(s).toEqual({ kind: "dance", text: "广场舞 · 1 人在玩", lit: false, acts: [{ act: "join", label: "加入", on: true }] });
   });
 
   it("lights W 的礼物 while the gift is in your hands, with 传", () => {
@@ -194,18 +195,19 @@ describe("the small room's strip", () => {
     expect(stripOf(room(), race({ lanes: race().lanes.slice(1), start: NOW - RACE_LEAD_MS }), NOW).text).toBe("急件赛 · 下一场你在里面");
   });
 
-  it("gives 基建加盖 its height and your hand with 放, 没块了 when empty, 再来一轮 once it fell", () => {
-    expect(stripOf(room(), stack(), NOW)).toEqual({ kind: "stack", text: "基建加盖 · 2 层 · 手里 2 块", lit: true, acts: [{ act: "drop", label: "放", on: true }] });
-    expect(stripOf(room(), stack({ hand: { n: 0, at: NOW - 9_000 } }), NOW)).toMatchObject({ lit: false, acts: [{ act: "drop", label: "没块了", on: false }] });
-    expect(stripOf(room(), stack({ fell: { at: NOW - 1_000, height: 2 } }), NOW)).toMatchObject({ text: "基建加盖 · 塌了！这一轮 2 层", acts: [{ act: "stackAgain", label: "再来一轮" }] });
+  it("gives 基建加盖 its height with 放 while no mode plays nor waits; 放 grey for the 3 s its plank is laid", () => {
+    expect(stackStrip(room({ stack: tower() }), NOW)).toEqual({ kind: "stack", text: "基建加盖 · 2 层", lit: false, acts: [{ act: "drop", label: "放", on: true }] });
+    const fell = room({ stack: tower({ n: 3, fell: { at: NOW - 1_000, height: 2 } }) });
+    expect(stackStrip(fell, NOW)).toEqual({ kind: "stack", text: "塌了！2 层 · 3 秒后打新地基", lit: false, acts: [{ act: "drop", label: "放", on: false }] });
+    expect(stackStrip(fell, NOW + 2_000)).toMatchObject({ text: "基建加盖 · 0 层", acts: [{ act: "drop", on: true }] });
   });
 
   it("lights 随堂测 while a question waits for your answer, not once you picked; the dance with its combo and 跳", () => {
     expect(stripOf(room(), quiz(), NOW)).toMatchObject({ text: "随堂测 · 第 1 / 1 题", lit: true, acts: [] });
     const picked: QuizPicks = { at: base.at, picks: { 0: { pick: 1 } } };
     expect(stripOf(room(), quiz(), NOW, picked).lit).toBe(false);
-    const dance: SquadMode = { kind: "dance", ...base, in: [{ h: 1, combo: 7 }], song: "s1", name: "Song", songAt: NOW - 1_000 };
-    expect(stripOf(room(), dance, NOW)).toEqual({ kind: "dance", text: "广场舞 · COMBO 7", lit: true, acts: [{ act: "danceTap", label: "跳", on: true }] });
+    const mine: SquadMode = dance({ in: [{ h: 1, combo: 7 }] });
+    expect(stripOf(room(), mine, NOW)).toEqual({ kind: "dance", text: "广场舞 · COMBO 7", lit: true, acts: [{ act: "danceTap", label: "跳", on: true }] });
   });
 });
 
@@ -229,11 +231,11 @@ describe("the small room", () => {
     expect(html.match(/<span>[^<]+：/g)).toHaveLength(2);
   });
 
-  it("shows the four with their names, the strip lit, 钓鳞 as it stands, and 说话 · 扔东西 · 跟着听", () => {
-    const html = view(room({ mode: stack() }));
+  it("shows the four with their names, the strip, 钓鳞 as it stands, and 说话 · 扔东西 · 跟着听", () => {
+    const html = view(room({ stack: tower() }));
     expect(html).toContain("开打中 · 险境 · 官服 4/4");
     expect(html).toContain('<span class="clk">32:10</span>');
-    expect(html).toContain('class="ms k-stack lit"');
+    expect(html).toContain('class="ms k-stack"');
     expect(html).toContain('class="trk"');
     expect(html.match(/class="mr( you)?( edge-[lr])?"/g)).toHaveLength(4);
     expect(html).toContain('<span class="nm">你</span>');
@@ -251,8 +253,12 @@ describe("the small room", () => {
     expect(html).toContain(">跟着听</button>");
     // 跟着听 only to one 听歌 is open to
     expect(view(room({ hear: false }))).not.toContain("跟着听");
-    // no mode: no strip
-    expect(view(room())).not.toContain('class="ms');
+    // a mode playing or waiting: its strip in the tower's place
+    const quizzing = view(room({ mode: quiz() }));
+    expect(quizzing).toContain('class="ms k-quiz');
+    expect(quizzing).not.toContain('class="trk"');
+    // the tower fell: no track till it is rebuilt
+    expect(view(room({ stack: tower({ n: 3, fell: { at: NOW - 1_000, height: 2 } }) }))).not.toContain('class="trk"');
   });
 
   it("puts the quiz's picture and three on its strip, yours marked once picked", () => {

@@ -80,6 +80,7 @@ const room = (more: Partial<SquadRoom> = {}): SquadRoom => ({
   members: [member(1), member(2), member(3), member(4)],
   wentAt: NOW - 600_000,
   fire: { level: 0, prog: 0, at: NOW, by: null, top: 0, last: null, lastTop: 0, bestTop: 0 },
+  stack: { round: 1, at: NOW, n: 0, sum: 0, top: [], swingAt: NOW, best: 0, busy: [] },
   mode: null,
   endsAt: NOW + 3_600_000,
   endsWhy: "idle",
@@ -91,7 +92,8 @@ const room = (more: Partial<SquadRoom> = {}): SquadRoom => ({
   ...more,
 });
 const nothing = () => {};
-const grid = (r: SquadRoom) => renderToStaticMarkup(createElement(PlayGrid, { room: r, now: NOW, fish: "rest", busy: false, msg: null, onFish: nothing, onFire: nothing, onMode: nothing }));
+const grid = (r: SquadRoom) =>
+  renderToStaticMarkup(createElement(PlayGrid, { room: r, now: NOW, fish: "rest", busy: false, msg: null, onFish: nothing, onFire: nothing, onStack: nothing, onMode: nothing }));
 
 describe("a match waiting, in 「玩」", () => {
   it("says how many are ready on its tile, readies one not ready, opens the card to one ready or its initiator; the others wait", () => {

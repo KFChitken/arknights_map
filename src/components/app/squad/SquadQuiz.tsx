@@ -16,6 +16,7 @@ import {
 import { WorldError } from "@/lib/world/types";
 import { isListening, listenLiteNow, useListenPlayer } from "../listening";
 import { SquadRoach } from "./SquadRoach";
+import { StackBehind } from "./SquadStack";
 import {
   closeSquadModeCard,
   loadSquadRoom,
@@ -223,6 +224,7 @@ export function QuizView({
           ×
         </button>
       </header>
+      <StackBehind />
       {players.length > 0 && (
         <div className="players">
           {players.map(({ m, points }) => (

@@ -15,6 +15,7 @@ import { sweepListening } from "./lib/server/listen";
 import { sweepRooms } from "./lib/server/listenRooms";
 import { sweepSquad } from "./lib/server/squad";
 import { settleFireWeek } from "./lib/server/fireBoard";
+import { settleStackWeek } from "./lib/server/stackBoard";
 import { sweepModes } from "./lib/server/squadModes";
 import { hearOthers } from "./lib/server/live";
 import { pruneSignInMail } from "./lib/server/loginCodes";
@@ -164,6 +165,10 @@ if (!helper) {
   const settleFire = () => settleFireWeek().catch(failed("squad", "Settling 火焰周榜's week failed"));
   settleFire();
   setInterval(settleFire, 5 * MINUTE_MS);
+  // 基建周榜 the same way, 基建狂魔 to the named of its top 100 towers (src/lib/server/stackBoard.ts)
+  const settleStack = () => settleStackWeek().catch(failed("squad", "Settling 基建周榜's week failed"));
+  settleStack();
+  setInterval(settleStack, 5 * MINUTE_MS);
 
   // sign-in codes past their day and mail counted for more than a day: here, not on every ask for a code
   const pruneMail = () => pruneSignInMail().catch(failed("prune", "Pruning old sign-in codes and mail counts failed"));
