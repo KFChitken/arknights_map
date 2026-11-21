@@ -11,6 +11,8 @@ import { T } from "@/i18n";
  * className marks a sheet laid out its own way (globals.css), and style is the sheet's own. onUp, a page within a sheet
  * (the new 我的资料's): a ‹ at the top left goes up to it, as Escape and a tap outside do, while × closes the whole.
  * shut: what the × is instead, for a sheet that shuts into something rather than closing (听歌's ⌄, into its bar).
+ * over: what opens over the sheet fixed to the screen (its asks and panels), drawn after its foot and not in its
+ * scrolling body: Safari on iPhone clips a fixed box to a scrolling parent, and the foot then sits over its end.
  */
 export default function Sheet({
   title,
@@ -22,6 +24,7 @@ export default function Sheet({
   onUp,
   shut,
   footer,
+  over,
   children,
 }: {
   title: string;
@@ -33,6 +36,7 @@ export default function Sheet({
   onUp?: () => void;
   shut?: { icon: ReactNode; label: string };
   footer?: ReactNode;
+  over?: ReactNode;
   children: ReactNode;
 }) {
   const close = onUp ?? onBack ?? onClose;
@@ -63,6 +67,7 @@ export default function Sheet({
         </header>
         <div className="sheet-body">{children}</div>
         {footer && <footer className="sheet-foot">{footer}</footer>}
+        {over}
       </section>
     </div>
   );

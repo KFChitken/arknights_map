@@ -416,6 +416,23 @@ function ListView({
       title={T.squad.title}
       className="sq-sheet"
       onClose={onClose}
+      over={
+        asking && (
+          <JoinAsk
+            room={asking}
+            home={home}
+            inRoom={Boolean(room)}
+            showName={showName}
+            busy={busy}
+            onYes={() => {
+              const r = asking;
+              setAsking(null);
+              onJoin(r);
+            }}
+            onNo={() => setAsking(null)}
+          />
+        )
+      }
       footer={
         <div className="sq-foot">
           {room ? (
@@ -508,21 +525,6 @@ function ListView({
         )}
         {idle ? <p className="hint">{T.squad.list.idle}</p> : <p className="hint sq-tip">{T.squad.list.tip}</p>}
       </div>
-      {asking && (
-        <JoinAsk
-          room={asking}
-          home={home}
-          inRoom={Boolean(room)}
-          showName={showName}
-          busy={busy}
-          onYes={() => {
-            const r = asking;
-            setAsking(null);
-            onJoin(r);
-          }}
-          onNo={() => setAsking(null)}
-        />
-      )}
     </Sheet>
   );
 }
@@ -1039,6 +1041,130 @@ function RoomView({
   useTick(warmth > 0 ? FIRE_DROP_MS / 4 : null);
   // whom the host may hand the room to: anyone else in it but a 人机
   const heirs = room.members.filter((m) => !m.you && !m.bot);
+  // what asks first, the pickers and 说话 / 动作: over the sheet, its foot under them (Sheet.tsx over)
+  const over = (
+    <>
+      {asking === "hostLeave" && (
+        <Ask title={T.squad.room.hostLeaveAsk} onNo={() => setAsking(null)}>
+          <p>{heirs.length ? T.squad.room.hostLeaveSub : T.squad.room.hostLeaveAlone}</p>
+          {heirs.map((m) => (
+            <div key={m.h} className="row">
+              <button
+                className="dark grow"
+                disabled={busy}
+                onClick={() => {
+                  setAsking(null);
+                  void run(() => leaveSquadRoom(m.h));
+                }}
+              >
+                {fmt(T.squad.room.handTo, { name: m.name })}
+              </button>
+            </div>
+          ))}
+          <div className="row">
+            <button
+              className={heirs.length ? "ghost grow" : "dark grow"}
+              disabled={busy}
+              onClick={() => {
+                setAsking(null);
+                void run(() => squadState("end"));
+              }}
+            >
+              {T.squad.room.leaveDestroy}
+            </button>
+            <button className="ghost" onClick={() => setAsking(null)}>
+              {T.squad.room.endNo}
+            </button>
+          </div>
+        </Ask>
+      )}
+      {asking === "end" && (
+        <Ask title={T.squad.room.endAsk} onNo={() => setAsking(null)}>
+          <p>{T.squad.room.endNote}</p>
+          <div className="row">
+            <button
+              className="dark grow"
+              disabled={busy}
+              onClick={() => {
+                setAsking(null);
+                void run(() => squadState("end"));
+              }}
+            >
+              {T.squad.room.endYes}
+            </button>
+            <button className="ghost" onClick={() => setAsking(null)}>
+              {T.squad.room.endNo}
+            </button>
+          </div>
+        </Ask>
+      )}
+      {kickOf && (
+        <Ask title={fmt(T.squad.room.kickAsk, { name: kickOf.name })} onNo={() => setKicking(null)}>
+          <p>{T.squad.room.kickSub}</p>
+          <div className="row">
+            <button
+              className="dark grow"
+              disabled={busy}
+              onClick={() => {
+                setKicking(null);
+                void run(() => kickFromSquad(kickOf.h));
+              }}
+            >
+              {T.squad.room.kick}
+            </button>
+            <button className="ghost" onClick={() => setKicking(null)}>
+              {T.squad.room.endNo}
+            </button>
+          </div>
+        </Ask>
+      )}
+      {picking && (
+        <PicksAsk
+          kind={picking}
+          me={me}
+          art={art}
+          busy={busy}
+          taken={taken}
+          holders={holders}
+          onAsk={room.state === "wait" ? (h) => void sayTo(TO.giveUp, h).then((sent) => sent && setPicking(null)) : undefined}
+          onPick={async (p) => {
+            const r = await run(() => setSquadPrefs({ core: me.core, strategy: me.strategy, extras: me.extras, ...p }));
+            if (r) setPicking(null);
+          }}
+          onClose={() => setPicking(null)}
+        />
+      )}
+      {asking === "invite" && (
+        <InvitePicker
+          room={room}
+          busy={busy}
+          onSend={async (picked) => {
+            const sent = await run(() => inviteToSquad(picked));
+            if (!sent) return;
+            setAsking(null);
+            onToast(sentWords(sent));
+          }}
+          onError={onError}
+          onClose={() => setAsking(null)}
+        />
+      )}
+      {asking === "declare" && (
+        <DeclareAsk roaches={roaches} ink={ink} need={SQUAD_MAX - n} busy={busy} onSend={(from) => void declare(from)} onNo={() => setAsking(null)} />
+      )}
+      {asking === "key" && (
+        <RekeyAsk
+          left={room.keyLeft}
+          busy={busy}
+          onSave={async (key) => {
+            const r = await run(() => changeSquadKey(key));
+            if (r) setAsking(null);
+          }}
+          onNo={() => setAsking(null)}
+        />
+      )}
+      {talking && <SquadTalk room={room} start={talking === "round" ? "round" : undefined} onClose={() => setTalking(false)} onError={onError} />}
+    </>
+  );
   return (
     <Sheet
       title={`${levelName(room.level)}${T.squad.dot}${srv(room.server)}`}
@@ -1061,6 +1187,7 @@ function RoomView({
         </div>
       }
       onClose={onClose}
+      over={over}
       footer={
         <>
           <div className="sq-footrow">
@@ -1271,125 +1398,6 @@ function RoomView({
           {T.squad.list.card}
         </button>
       </p>
-      {asking === "hostLeave" && (
-        <Ask title={T.squad.room.hostLeaveAsk} onNo={() => setAsking(null)}>
-          <p>{heirs.length ? T.squad.room.hostLeaveSub : T.squad.room.hostLeaveAlone}</p>
-          {heirs.map((m) => (
-            <div key={m.h} className="row">
-              <button
-                className="dark grow"
-                disabled={busy}
-                onClick={() => {
-                  setAsking(null);
-                  void run(() => leaveSquadRoom(m.h));
-                }}
-              >
-                {fmt(T.squad.room.handTo, { name: m.name })}
-              </button>
-            </div>
-          ))}
-          <div className="row">
-            <button
-              className={heirs.length ? "ghost grow" : "dark grow"}
-              disabled={busy}
-              onClick={() => {
-                setAsking(null);
-                void run(() => squadState("end"));
-              }}
-            >
-              {T.squad.room.leaveDestroy}
-            </button>
-            <button className="ghost" onClick={() => setAsking(null)}>
-              {T.squad.room.endNo}
-            </button>
-          </div>
-        </Ask>
-      )}
-      {asking === "end" && (
-        <Ask title={T.squad.room.endAsk} onNo={() => setAsking(null)}>
-          <p>{T.squad.room.endNote}</p>
-          <div className="row">
-            <button
-              className="dark grow"
-              disabled={busy}
-              onClick={() => {
-                setAsking(null);
-                void run(() => squadState("end"));
-              }}
-            >
-              {T.squad.room.endYes}
-            </button>
-            <button className="ghost" onClick={() => setAsking(null)}>
-              {T.squad.room.endNo}
-            </button>
-          </div>
-        </Ask>
-      )}
-      {kickOf && (
-        <Ask title={fmt(T.squad.room.kickAsk, { name: kickOf.name })} onNo={() => setKicking(null)}>
-          <p>{T.squad.room.kickSub}</p>
-          <div className="row">
-            <button
-              className="dark grow"
-              disabled={busy}
-              onClick={() => {
-                setKicking(null);
-                void run(() => kickFromSquad(kickOf.h));
-              }}
-            >
-              {T.squad.room.kick}
-            </button>
-            <button className="ghost" onClick={() => setKicking(null)}>
-              {T.squad.room.endNo}
-            </button>
-          </div>
-        </Ask>
-      )}
-      {picking && (
-        <PicksAsk
-          kind={picking}
-          me={me}
-          art={art}
-          busy={busy}
-          taken={taken}
-          holders={holders}
-          onAsk={room.state === "wait" ? (h) => void sayTo(TO.giveUp, h).then((sent) => sent && setPicking(null)) : undefined}
-          onPick={async (p) => {
-            const r = await run(() => setSquadPrefs({ core: me.core, strategy: me.strategy, extras: me.extras, ...p }));
-            if (r) setPicking(null);
-          }}
-          onClose={() => setPicking(null)}
-        />
-      )}
-      {asking === "invite" && (
-        <InvitePicker
-          room={room}
-          busy={busy}
-          onSend={async (picked) => {
-            const sent = await run(() => inviteToSquad(picked));
-            if (!sent) return;
-            setAsking(null);
-            onToast(sentWords(sent));
-          }}
-          onError={onError}
-          onClose={() => setAsking(null)}
-        />
-      )}
-      {asking === "declare" && (
-        <DeclareAsk roaches={roaches} ink={ink} need={SQUAD_MAX - n} busy={busy} onSend={(from) => void declare(from)} onNo={() => setAsking(null)} />
-      )}
-      {asking === "key" && (
-        <RekeyAsk
-          left={room.keyLeft}
-          busy={busy}
-          onSave={async (key) => {
-            const r = await run(() => changeSquadKey(key));
-            if (r) setAsking(null);
-          }}
-          onNo={() => setAsking(null)}
-        />
-      )}
-      {talking && <SquadTalk room={room} start={talking === "round" ? "round" : undefined} onClose={() => setTalking(false)} onError={onError} />}
     </Sheet>
   );
 }

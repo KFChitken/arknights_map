@@ -72,12 +72,24 @@
 .prefs .strat { padding: 0; border: 0; border-bottom: 1px dotted #9ca3af; background: none; color: inherit; font: inherit; }
 .prefs .strat small { margin-left: 4px; color: var(--muted); }
 
-/* asking first */
-.sq-ask-bg { position: fixed; inset: 0; z-index: 80; display: grid; place-items: end center; padding: 12px; background: rgba(13, 14, 16, 0.42); }
-@media (min-width: 720px) {
-  .sq-ask-bg { place-items: center; }
+/*
+ * asking first: over the sheet (Sheet.tsx over), within what is really on screen as the sheet is (globals.css
+ * --vv-top, --vv-h), its end clear of the phone's bottom bars; one taller than that scrolls, its last button in reach
+ */
+.sq-ask-bg {
+  position: fixed; inset: 0; top: var(--vv-top, 0px); bottom: auto; height: var(--vv-h, 100%); z-index: 80; display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-end; padding: 12px 12px calc(12px + var(--safe-bottom)); background: rgba(13, 14, 16, 0.42);
 }
-.sq-ask { width: min(100%, 420px); padding: 16px; border-radius: 16px; background: var(--paper); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); }
+@media (min-width: 720px) {
+  .sq-ask-bg { justify-content: center; }
+}
+@media (max-width: 719px) {
+  .on-amap .sq-ask-bg { padding-bottom: calc(34px + var(--safe-bottom)); }
+}
+.sq-ask {
+  width: min(100%, 420px); max-height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 16px; border-radius: 16px; background: var(--paper);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
 .sq-ask h3 { margin: 0 0 6px; font-size: 16px; }
 .sq-ask p { margin: 0 0 8px; font-size: 13.5px; line-height: 1.55; }
 .sq-ask .row { display: flex; gap: 8px; margin-top: 10px; }
@@ -171,7 +183,7 @@
 
 /* ♪ on the list: 卫戍的一起听 plays (SquadListen.tsx) */
 .sq-room .tagline .mus { margin-left: 6px; color: #18a0a5; font-weight: 700; }
-.sq-pick { display: flex; flex-direction: column; gap: 8px; max-height: min(78vh, 640px); }
+.sq-pick { display: flex; flex-direction: column; gap: 8px; max-height: min(78vh, 640px, 100%); }
 .sq-pick .search { padding: 8px 10px; border: 1px solid #d6d9de; border-radius: 10px; font: inherit; }
 .sq-pick .songs { flex: 1; min-height: 120px; overflow-y: auto; }
 .sq-pick .song { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid #eceef1; font-size: 13.5px; }
