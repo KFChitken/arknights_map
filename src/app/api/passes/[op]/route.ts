@@ -33,7 +33,7 @@ import { dayWords, suspendedMeans } from "@/lib/server/staffNotes";
  *   POST gift {friendId}       送 1 张寻访券 to a 触须之交 (src/lib/server/friendly.ts giftTicket); 一键 is world's friendsAct
  *   POST follow      关注 B 站领券: 领取 once 关注 was tapped, its tickets once
  *   PUT  wish {ids}  the wish list
- *   PUT  pool {pool} 卡池: both games (both), or one (ak, ef), from the next draw on
+ *   PUT  pool {pool} 卡池: both games (both), or one (ak, ef; only while PASS_POOLS is on), from the next draw on
  *   PUT  look {charId, plain}  a character's passes in the normal look (plain) or the special one
  *   PUT  wear {passId}         the pass worn on their profile card (null: none)
  *   PUT  map {on}    地图卡片上挂出通行证 (我的资料)

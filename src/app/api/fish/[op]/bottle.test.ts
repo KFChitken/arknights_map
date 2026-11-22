@@ -198,6 +198,8 @@ describe("钓鳞's 漂流瓶", () => {
   });
 
   it("opens to one pass from the player's 卡池, numbered on with 寻访's, and leaves the wish list's count and the tickets alone", async () => {
+    // a 卡池 of one game, as one may be picked once PASS_POOLS is on (else both, as passes.test.ts shows)
+    vi.stubEnv("PASS_POOLS", "on");
     const a = await account("a@example.com", ["arknights"]);
     await signIn(a);
     const ef = PASS_CATALOG.find((c) => c.game === "ef")!;

@@ -368,7 +368,7 @@ export default function Passes({
             onRefused={refuse}
           />
         ) : screen === "odds" ? (
-          <Odds gifts={st.gifts} onBack={() => setScreen("home")} />
+          <Odds gifts={st.gifts} pools={st.pools} onBack={() => setScreen("home")} />
         ) : (
           <Log art={art} onBack={() => setScreen("home")} onRefused={refuse} />
         )}
@@ -834,7 +834,7 @@ export function DrawButtons({ st, busy, onPull, onEdit }: { st: PassState; busy:
   );
 }
 
-function Home({
+export function Home({
   st,
   userId,
   art,
@@ -940,7 +940,8 @@ function Home({
         <p className="sr" role="status">
           {said}
         </p>
-        <PoolPick pool={pool} onPick={onPool} />
+        {/* 只抽方舟 and 只抽终末地 only while PASS_POOLS is on: else everyone draws from both, with nothing to pick */}
+        {st.pools && <PoolPick pool={pool} onPick={onPool} />}
         <div className="g-links">
           <button onClick={() => onScreen("odds")}>{T.passes.links.odds}</button>
           <button onClick={() => onScreen("log")}>{T.passes.links.log}</button>
@@ -1904,8 +1905,8 @@ export function WishEditor({
   );
 }
 
-/** 概率说明: the rules, from the same numbers the server draws by */
-function Odds({ gifts, onBack }: { gifts: boolean; onBack: () => void }) {
+/** 概率说明: the rules, from the same numbers the server draws by; a 卡池 of one game's only while one may be picked (pools) */
+export function Odds({ gifts, pools, onBack }: { gifts: boolean; pools: boolean; onBack: () => void }) {
   const counts = catalogCounts();
   const o = T.passes.odds;
   return (
@@ -1913,8 +1914,8 @@ function Odds({ gifts, onBack }: { gifts: boolean; onBack: () => void }) {
       <DayTop title={o.title} onBack={onBack} />
       <div className="od-body">
         <p>{fmt(o.pool, { n: CATALOG_SIZE, ak: counts.ak, ef: counts.ef })}</p>
-        <p>{fmt(o.each, { n: CATALOG_SIZE, pct: (100 / CATALOG_SIZE).toFixed(2) })}</p>
-        <p>{fmt(o.poolOne, { n: CATALOG_SIZE, pity: PITY })}</p>
+        <p>{fmt(pools ? o.each : o.eachAll, { n: CATALOG_SIZE, pct: (100 / CATALOG_SIZE).toFixed(2) })}</p>
+        {pools && <p>{fmt(o.poolOne, { n: CATALOG_SIZE, pity: PITY })}</p>}
         <p>{fmt(o.pity, { max: WISH_MAX, miss: PITY - 1, pity: PITY })}</p>
         <p>{o.wish}</p>
         <p>

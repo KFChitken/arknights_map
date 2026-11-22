@@ -77,7 +77,7 @@ export const isDrawSize = (n: unknown): n is DrawSize => n === 1 || n === 10;
  * 卡池: whom a pull brings when it brings nobody from the wish list: anyone of both games (both), or of one game alone
  * (Breeze, 2026-11-17). The wish list comes as often whichever (rollChars), its other game's characters too. Until a
  * player picks one, they draw from the game 我的资料's 在玩 says they play, or both when it says both or neither
- * (passPoolOf).
+ * (passPoolOf). One game's only while PASS_POOLS is on (src/lib/server/env.ts): else both, for everyone.
  */
 export const PASS_POOLS = ["both", "ak", "ef"] as const;
 export type PassPool = (typeof PASS_POOLS)[number];
@@ -144,8 +144,10 @@ export type PassState = {
   worn: WornPass | null;
   /** 触须之交 may give each other tickets (PASS_GIFTS): 送来的 y / 3 and 送券 show */
   gifts: boolean;
-  /** the 卡池 they draw from: the one they picked, else as their 在玩 has it (passPoolOf) */
+  /** the 卡池 they draw from: both while pools is false; else the one they picked, else as their 在玩 has it (passPoolOf) */
   pool: PassPool;
+  /** a 卡池 of one game may be picked (PASS_POOLS): else the page has none to pick, and every draw is from both */
+  pools: boolean;
   /** 关注 B 站领券, at the top of 每日任务: while it is on, until the site day after they claimed it */
   follow: FollowTask | null;
 };

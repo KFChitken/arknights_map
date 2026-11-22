@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { passCharNamed } from "@/lib/passCatalog";
 import { TASK_MAX, TICKETS_CAP, type FollowTask, type PassState, type Task, type WishOwned } from "@/lib/passes";
-import { Detail, DrawButtons, layout, Peek, PoolPick, poolLine, sampleWidth, Tasks, WishEditor, WishSlots } from "./Passes";
+import { Detail, DrawButtons, Home, layout, Odds, Peek, PoolPick, poolLine, sampleWidth, Tasks, WishEditor, WishSlots } from "./Passes";
 
 /** Room under a card for its name (Passes.tsx CAPTION) */
 const CAPTION = 20;
@@ -52,6 +52,7 @@ const state = (tasks: PassState["tasks"], more: Partial<PassState> = {}): PassSt
   worn: null,
   gifts: true,
   pool: "both",
+  pools: false,
   follow: null,
   ...more,
 });
@@ -227,6 +228,51 @@ describe("卡池 on the 寻访 page", () => {
     expect(poolLine("both")).toBe("475 位角色 · 每位概率一样");
     expect(poolLine("ak")).toBe("只抽方舟 · 441 位角色");
     expect(poolLine("ef")).toBe("只抽终末地 · 34 位角色");
+  });
+
+  const home = (st: PassState) =>
+    renderToStaticMarkup(
+      createElement(Home, {
+        st,
+        userId: "u1",
+        art: null,
+        msg: "",
+        said: "",
+        busy: false,
+        bump: null,
+        claimed: 0,
+        pool: st.pool,
+        hidden: false,
+        onPull: () => {},
+        onClaim: () => {},
+        onFollow: async () => null,
+        onPool: () => {},
+        onPeek: () => {},
+        onScreen: () => {},
+        onGift: () => {},
+        onClose: () => {},
+      }),
+    );
+
+  it("is not there to pick while only both games' may be drawn from (PASS_POOLS not on), and is once one game's may", () => {
+    const shut = home(state([task("touch", 0, 0)]));
+    expect(shut).toContain("<span>475 位角色 · 每位概率一样</span>");
+    expect(shut).not.toContain("g-pool");
+    expect(shut).not.toContain("只抽");
+    const open = home(state([task("touch", 0, 0)], { pools: true, pool: "ef" }));
+    expect(open).toContain("<span>只抽终末地 · 34 位角色</span>");
+    expect(open).toContain('<div class="g-pool">');
+  });
+
+  it("is told of in 概率说明 only once one game's may be picked: before, every draw is one in all 475", () => {
+    const odds = (pools: boolean) => renderToStaticMarkup(createElement(Odds, { gifts: true, pools, onBack: () => {} }));
+    const shut = odds(false);
+    expect(shut).toContain("<p>每次寻访，每位角色抽到的机会都一样：1/475，约 0.21%。星级只印在通行证上，和机会没有关系。</p>");
+    expect(shut).not.toContain("只抽");
+    expect(shut).not.toContain("两边都抽");
+    const open = odds(true);
+    expect(open).toContain("<p>卡池两边都抽时，每次寻访每位角色抽到的机会都一样：1/475，约 0.21%。");
+    expect(open).toContain("<p>卡池也可以只抽方舟或只抽终末地，在寻访页上随时能改");
   });
 });
 

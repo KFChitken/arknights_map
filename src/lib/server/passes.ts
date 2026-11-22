@@ -33,6 +33,7 @@ import {
   type PassesDot,
   type PassesMe,
   type PassOnCard,
+  type PassPool,
   type PassState,
   type RoachPass,
   type Task,
@@ -43,7 +44,7 @@ import { nextSiteDayAt, siteDay, siteDayStart } from "../siteDay";
 import { WorldError } from "../world/types";
 import { isModHere, isOwnerEmail } from "./admins";
 import { db } from "./db";
-import { passesMode, passGiftsOn } from "./env";
+import { passesMode, passGiftsOn, passPoolsOn } from "./env";
 import type { Exec } from "./guides";
 import { HttpError } from "./http";
 import { operatorArtIndex, type OperatorArtIndex } from "./operatorArt";
@@ -60,10 +61,16 @@ import { followShown, passFollow } from "./siteSettings";
  * site drew its character; the wish list, PITY draws at most from one of it; the 卡池, both games or one, for whoever
  * else comes. Who was drawn is decided here, by crypto.randomInt, before the page shows anything. No ticket is sold
  * or given for money; 触须之交 may give each other one a day (receiveGift, from friendly.ts giftTicket). Switched by
- * PASSES and PASS_GIFTS (env.ts).
+ * PASSES, PASS_GIFTS and PASS_POOLS (env.ts).
  */
 
 type Wallet = typeof passWallets.$inferSelect;
+
+/**
+ * The 卡池 a player draws from: both games while one game's may not be picked (PASS_POOLS, env.ts), whatever they
+ * picked before; else the one they picked, else as their 在玩 has it (passPoolOf)
+ */
+const poolFor = (picked: PassPool | null, games: readonly string[]): PassPool => (passPoolsOn() ? passPoolOf(picked, games) : "both");
 
 /** One draw a second for each player, on every web process */
 const DRAW_GAP_MS = 1000;
@@ -250,7 +257,8 @@ async function stateOf(w: Wallet, games: readonly string[], now: number, welcome
     nextDayAt: nextSiteDayAt(now),
     worn,
     gifts: passGiftsOn(),
-    pool: passPoolOf(w.pool, games),
+    pool: poolFor(w.pool, games),
+    pools: passPoolsOn(),
     follow: followOf(w, now),
   };
 }
@@ -366,7 +374,7 @@ export async function passFromBottle(
     .where(eq(passWallets.userId, user.id))
     .limit(1);
   // a count of 0: never the pull PITY brings
-  const { picks } = rollChars(CATALOG_IDS, (w?.wish ?? []).filter(isPassChar), 0, 1, rand, poolIds(passPoolOf(w?.pool ?? null, user.games)));
+  const { picks } = rollChars(CATALOG_IDS, (w?.wish ?? []).filter(isPassChar), 0, 1, rand, poolIds(poolFor(w?.pool ?? null, user.games)));
   const [pick] = picks;
   const [had] = await tx
     .select({ n: count() })
@@ -429,7 +437,7 @@ export async function draw(
     if (short) throw new HttpError(409, fmt(T.server.passes.wishShort, { n: short, max: WISH_MAX }));
     if (w.tickets < size) throw new HttpError(409, T.server.passes.notEnough);
 
-    const { picks, miss } = rollChars(CATALOG_IDS, w.wish.filter(isPassChar), w.miss, size, rand, poolIds(passPoolOf(w.pool, user.games)));
+    const { picks, miss } = rollChars(CATALOG_IDS, w.wish.filter(isPassChar), w.miss, size, rand, poolIds(poolFor(w.pool, user.games)));
     const chars = [...new Set(picks.map((p) => p.charId))].sort((a, b) => a - b);
     const had = await tx
       .select({ charId: passes.charId, n: count() })
@@ -486,9 +494,13 @@ export async function setWish(user: UserRow, ids: unknown, now = Date.now()): Pr
   return passState(user.id, now);
 }
 
-/** 卡池: both games, or one (src/lib/passes.ts PassPool), from the next draw on; the wish list's chance stays as it was */
+/**
+ * 卡池: both games, or one (src/lib/passes.ts PassPool; only while PASS_POOLS is on), from the next draw on; the wish
+ * list's chance stays as it was
+ */
 export async function setPool(user: UserRow, pool: unknown, now = Date.now()): Promise<PassState> {
   if (!isPassPool(pool)) throw new HttpError(400, T.server.passes.badPool);
+  if (pool !== "both" && !passPoolsOn()) throw new HttpError(409, T.server.passes.poolClosed);
   const [set] = await db
     .update(passWallets)
     .set({ pool })

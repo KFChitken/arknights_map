@@ -122,7 +122,11 @@ describe("通行证寻访's requests", () => {
     expect(await call("POST", "draw", { n: 3 })).toMatchObject({ status: 400, body: { error: "一次只能寻访 1 次或 10 次。" } });
     expect(await call("PUT", "wish", { ids: [1, 2] })).toMatchObject({ status: 400, body: { error: "心愿单要放满 6 位角色（不能重复），或者一位也不放。" } });
     expect(await call("PUT", "wish", { ids: [1, 2, 3, 4, 5, 6] })).toMatchObject({ status: 200, body: { wish: [1, 2, 3, 4, 5, 6] } });
-    expect(await call("PUT", "pool", { pool: "ef" })).toMatchObject({ status: 200, body: { pool: "ef", wish: [1, 2, 3, 4, 5, 6] } });
+    // only both games' 卡池 till PASS_POOLS is on
+    expect(await call("PUT", "pool", { pool: "ef" })).toMatchObject({ status: 409, body: { error: "现在只开了两边都抽的卡池。" } });
+    expect(await call("PUT", "pool", { pool: "both" })).toMatchObject({ status: 200, body: { pool: "both", pools: false } });
+    vi.stubEnv("PASS_POOLS", "on");
+    expect(await call("PUT", "pool", { pool: "ef" })).toMatchObject({ status: 200, body: { pool: "ef", pools: true, wish: [1, 2, 3, 4, 5, 6] } });
     expect(await call("PUT", "pool", { pool: "endfield" })).toMatchObject({ status: 400, body: { error: "卡池只能选两边都抽、只抽方舟或只抽终末地。" } });
     expect(await call("GET", "collection")).toMatchObject({ status: 200, body: { passes: 1 }, cache: "no-store" });
     const log = await call("GET", "log");

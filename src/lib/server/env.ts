@@ -119,6 +119,13 @@ export const profile2Mode = (): "on" | "admins" | "off" => (["on", "admins"] as 
 export const squadMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.SQUAD) ?? "off";
 export const passGiftsOn = () => process.env.PASS_GIFTS !== "off";
 /**
+ * 卡池 of one game, 只抽方舟 and 只抽终末地 (src/lib/passes.ts PassPool): PASS_POOLS=on lets a player pick one; else (the
+ * default) everyone draws from both games, a 漂流瓶 too, with nothing to pick, and a pick of one is refused (Breeze,
+ * 2026-11-22: both alone for now). A pick made before stays kept (pass_wallets.pool), and counts again once it is on.
+ * Read on every use, so the tests can switch it.
+ */
+export const passPoolsOn = () => process.env.PASS_POOLS === "on";
+/**
  * 香艳制作人 (src/lib/server/haimao.ts), a guide: HAIMAO=on shows her to everyone, visitors too; admins, only to the 站长
  * and the admins (to try her on the live site first); off (the default) to nobody: she is not on the map, and touching
  * her is refused. What she keeps of each player stays whichever it is. Read on every use, so the tests can switch it.

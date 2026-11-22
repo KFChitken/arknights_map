@@ -18,6 +18,7 @@ import {
   openWallet,
   passesMe,
   passesOpen,
+  passFromBottle,
   passLog,
   passState,
   roachPass,
@@ -283,14 +284,53 @@ describe("a draw", () => {
   });
 });
 
-describe("卡池", () => {
-  /** Dice that never land on the wish list by chance: the catalogue's last, then the first of whomever is left */
-  const offWish = (n: number) => (n === CATALOG_IDS.length ? n - 1 : 0);
+/** Dice that never land on the wish list by chance: the catalogue's last, then the first of whomever is left */
+const offWish = (n: number) => (n === CATALOG_IDS.length ? n - 1 : 0);
+/** The player, playing these games (我的资料's 在玩) */
+const plays = async (u: UserRow, games: string[]) => {
+  const [row] = await db.update(users).set({ games }).where(eq(users.id, u.id)).returning();
+  return row;
+};
+
+describe("卡池, while only both games' may be drawn from (PASS_POOLS not on: Breeze, 2026-11-22)", () => {
+  const last = CATALOG_IDS[CATALOG_IDS.length - 1];
+
+  it("is both for everyone, whatever they play or picked before, a 漂流瓶 too, the pick kept for later", async () => {
+    // never picked, plays 终末地 alone; picked 方舟's before
+    const a = await plays(await player("a@example.com"), ["endfield"]);
+    const b = await plays(await player("b@example.com"), ["arknights"]);
+    expect(await openWallet(a, NOON)).toMatchObject({ pool: "both", pools: false });
+    await openWallet(b, NOON);
+    await setWallet(b.id, { pool: "ak", tickets: 50 });
+    expect(await passState(b.id, NOON)).toMatchObject({ pool: "both", pools: false });
+    // the dice that bring 终末地's first with its 卡池 and 方舟's with theirs bring the catalogue's last, as with both
+    expect((await draw(a, 10, NOON, offWish)).drawn.every((d) => d.charId === last)).toBe(true);
+    expect((await draw(b, 1, NOON, offWish)).drawn[0].charId).toBe(last);
+    expect((await passFromBottle(db, b, NOON + 1000, offWish)).drawn.charId).toBe(last);
+    // kept as they were: back once one game's may be picked again
+    expect((await wallet(a.id)).pool).toBeNull();
+    expect((await wallet(b.id)).pool).toBe("ak");
+    vi.stubEnv("PASS_POOLS", "on");
+    expect(await passState(b.id, NOON)).toMatchObject({ pool: "ak", pools: true });
+    expect((await passState(a.id, NOON)).pool).toBe("ef");
+  });
+
+  it("takes both, and no pick of one game's", async () => {
+    const a = await player("a@example.com");
+    await openWallet(a, NOON);
+    for (const p of ["ak", "ef"]) {
+      expect(await refusal(setPool(a, p, NOON)), p).toEqual({ status: 409, message: "现在只开了两边都抽的卡池。" });
+    }
+    expect((await wallet(a.id)).pool).toBeNull();
+    expect(await refusal(setPool(a, "endfield", NOON))).toMatchObject({ status: 400 });
+    expect(await setPool(a, "both", NOON)).toMatchObject({ pool: "both", pools: false });
+    expect((await wallet(a.id)).pool).toBe("both");
+  });
+});
+
+describe("卡池, while one game's may be picked (PASS_POOLS=on)", () => {
   const ef = poolIds("ef")!;
-  const plays = async (u: UserRow, games: string[]) => {
-    const [row] = await db.update(users).set({ games }).where(eq(users.id, u.id)).returning();
-    return row;
-  };
+  beforeEach(() => vi.stubEnv("PASS_POOLS", "on"));
 
   it("follows the games the player plays until they pick one, then keeps what they picked", async () => {
     const a = await plays(await player("a@example.com"), ["endfield"]);

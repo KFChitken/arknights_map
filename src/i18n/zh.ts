@@ -580,6 +580,8 @@ export const zh = {
       notEnough: "寻访券不够了。",
       badWish: "心愿单要放满 6 位角色（不能重复），或者一位也不放。",
       badPool: "卡池只能选两边都抽、只抽方舟或只抽终末地。",
+      /** a pick of one game's 卡池 while only both may be drawn from (PASS_POOLS not on) */
+      poolClosed: "现在只开了两边都抽的卡池。",
       wishChangedToday: "心愿单今天已经改过了，北京时间凌晨 4 点以后才能再改。",
       /** a draw while the wish list is neither full nor empty (Breeze, 2026-11-21): n more wanted, max is WISH_MAX */
       wishShort: "心愿单还差 {n} 位：放满 {max} 位才能寻访，不要心愿就全部拿掉。",
@@ -4054,6 +4056,8 @@ export const zh = {
       title: "概率说明",
       pool: "卡池里一共 {n} 位角色：明日方舟 {ak} 位、终末地 {ef} 位，联动角色和剧情角色也在里面。",
       each: "卡池两边都抽时，每次寻访每位角色抽到的机会都一样：1/{n}，约 {pct}%。星级只印在通行证上，和机会没有关系。",
+      /** each, while only both may be drawn from (PASS_POOLS not on): as it was before 卡池 could be picked */
+      eachAll: "每次寻访，每位角色抽到的机会都一样：1/{n}，约 {pct}%。星级只印在通行证上，和机会没有关系。",
       poolOne: "卡池也可以只抽方舟或只抽终末地，在寻访页上随时能改，从下一次寻访算起；没选过就照「我的资料」里的「在玩」。只抽一边时，每次寻访出心愿单里角色的机会和两边都抽一样，是心愿单人数 ÷ {n}；没出心愿的时候，只从选的那边、心愿单以外的角色里平均抽。心愿单里另一边的角色照样会出，{pity} 次保底也照旧。",
       pity: "心愿单要放满 {max} 位，或者一位也不放，放了没满不能寻访。连续 {miss} 次没出心愿单里的角色，第 {pity} 次一定出其中一位：在心愿单里平均挑，已经有的也算。抽到心愿单里的角色就从头数，不管是不是保底出的。心愿单是空的就没有保底。",
       wish: "心愿单放满以后每天能改一次（北京时间凌晨 4 点换日），全部拿掉也算一次；没放满的时候改不算。改了不影响保底已经数到第几次。",
