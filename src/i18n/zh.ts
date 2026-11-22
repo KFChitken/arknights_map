@@ -3987,12 +3987,12 @@ export const zh = {
       giftsIn: "已到账 {n} 张",
       claimed: "领到 {n} 张寻访券，手上有 {tickets} 张了。",
       /**
-       * 关注 B 站领券, at the top: the two lines as the owner wrote them (2026-11-17); name is the owner's B 站 account.
-       * 2026-11-21: 关注 opens the account's page, and 领取 takes its place once back
+       * 关注 B 站领券, at the top: the line as the owner wrote it (2026-11-17; its second line, 已关注的也点一下, taken
+       * out 2026-11-22); name is the owner's B 站 account. 2026-11-21: 关注 opens the account's page, and 领取 takes
+       * its place once back
        */
       follow: {
         title: "关注{name}",
-        dm: "（已关注的也点一下）",
         once: "一次性 · {n} 张",
         go: "关注",
         goLabel: "去 B 站关注{name}（新窗口）",

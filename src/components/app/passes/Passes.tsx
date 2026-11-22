@@ -674,7 +674,6 @@ export function FollowRow({ f, userId, onClaim }: { f: FollowTask; userId: strin
         <TaskIcon k="follow" />
         <span className="gf-t">
           <b>{fmt(t.title, { name: f.name })}</b>
-          {!f.got && <span>{t.dm}</span>}
           <small>{fmt(t.once, { n: FOLLOW_TICKETS })}</small>
         </span>
         {f.got ? (

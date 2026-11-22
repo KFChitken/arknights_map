@@ -106,7 +106,9 @@ describe("关注 B 站领券 on the 寻访 page", () => {
     const at = html.indexOf('<div class="gt-follow">');
     expect(at).toBeGreaterThan(html.indexOf('class="gt-h"'));
     expect(at).toBeLessThan(html.indexOf("碰一碰别人"));
-    expect(html).toContain('<span class="gf-t"><b>关注Breeze青嵐</b><span>（已关注的也点一下）</span><small>一次性 · 10 张</small></span>');
+    expect(html).toContain('<span class="gf-t"><b>关注Breeze青嵐</b><small>一次性 · 10 张</small></span>');
+    // no second line asking those who follow already to tap too (Breeze, 2026-11-22)
+    expect(html).not.toContain("已关注");
     expect(html).toContain(
       '<a class="gf-go" href="https://space.bilibili.com/12345" target="_blank" rel="noopener noreferrer" aria-label="去 B 站关注Breeze青嵐（新窗口）">关注</a>',
     );
@@ -123,7 +125,7 @@ describe("关注 B 站领券 on the 寻访 page", () => {
     const html = tasksOf(state([task("touch", 0, 0)], { follow: f }));
     expect(html).toContain('<button type="button" class="gf-go claim">领取</button>');
     expect(html).not.toContain("<a ");
-    expect(html).toContain("<span>（已关注的也点一下）</span>");
+    expect(html).toContain('<span class="gf-t"><b>关注Breeze青嵐</b><small>一次性 · 10 张</small></span>');
     // another player on this device, or a link changed since: 关注 again
     expect(tasksOf(state([task("touch", 0, 0)], { follow: f }), "u2")).toContain(">关注</a>");
     expect(tasksOf(state([task("touch", 0, 0)], { follow: { ...f, url: "https://space.bilibili.com/678" } }))).toContain(">关注</a>");
@@ -132,13 +134,12 @@ describe("关注 B 站领券 on the 寻访 page", () => {
     expect(tasksOf(state([task("touch", 0, 0)], { follow: f }))).toContain(">关注</a>");
   });
 
-  it("says 已领 the day it was claimed, with neither 关注 nor 领取 nor its second line, and is not there while it is off", () => {
+  it("says 已领 the day it was claimed, with neither 关注 nor 领取, and is not there while it is off", () => {
     kept({ "zhoup.passFollowWent.u1": f.url });
     const got = tasksOf(state([task("touch", 0, 0)], { follow: { ...f, got: true } }));
     expect(got).toContain('<div class="gt-follow got">');
     expect(got).toContain('<span class="gf-t"><b>关注Breeze青嵐</b><small>一次性 · 10 张</small></span><span class="gt-x ok">已领</span>');
     expect(got).not.toContain("gf-go");
-    expect(got).not.toContain("（已关注的也点一下）");
     expect(tasksOf(state([task("touch", 0, 0)]))).not.toContain("gt-follow");
   });
 });
