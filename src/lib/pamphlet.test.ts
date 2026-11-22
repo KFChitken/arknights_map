@@ -6,26 +6,45 @@ import { T } from "@/i18n";
 import { CHANGELOG } from "./changelog";
 import { logDays } from "./changelogView";
 import { findLine } from "./events";
+import { HAIMAO_LINES } from "./haimao";
+import { LISTEN_DEFAULTS } from "./listen";
 import { EMPTY_MEMORY, FRESH_MS, isNew, noticeDot, noticeRead, noticeToPop, stripNotice, type NoticePop, type PublicNotice } from "./notices";
 import {
   actionMayRun,
   countWord,
   coverCount,
+  HEADLINERS,
   hintsMayCome,
   innLine,
+  isPamphlet,
+  issue2MayPop,
+  issue2Pages,
+  issue2Ready,
+  issueOf,
   markedParts,
   mayPopAmong,
   newestLines,
+  NONE_OPEN,
+  openedKey,
+  openedOf,
+  openedOfKey,
   PAMPHLET_1_FROM,
+  PAMPHLET_2_FROM,
+  PAMPHLET_2_ID,
   PAMPHLET_FRESH_MS,
   PAMPHLET_ID,
   pageButton,
   pageNo,
   pageText,
+  pageTitle,
+  pamphlet2Notice,
   pamphletMayPop,
   pamphletNotice,
   pamphletPages,
+  withBooklets,
   withPamphlet,
+  type Opened,
+  type Page2,
   type Reader,
   type UpdatePage,
 } from "./pamphlet";
@@ -309,5 +328,284 @@ describe("the booklet", () => {
     expect(s).toContain("<mark>「界面」</mark>");
     expect(s).toContain("<mark>都能收起来</mark>");
     expect(s).not.toContain("**");
+  });
+});
+
+// ---- 第 2 期 ----
+
+/** Everything it tells of open to the reader (a 明日方舟 player once SQUAD=on and the rest) */
+const ALL: Opened = { squad: true, listen: true, disco: true, passes: true, study: true, haimao: true, fish: true, profile: true, endfield: false };
+/** One who plays 终末地 alone: 一起卫戍 never shows to them */
+const ENDFIELD: Opened = { ...ALL, squad: false, endfield: true };
+/** A few days after it came */
+const NOW2 = PAMPHLET_2_FROM + 3 * DAY;
+const BEFORE2 = PAMPHLET_2_FROM - 40 * DAY;
+
+/** What pops up on opening the map for a player who signed up then and has that open, as MapApp asks */
+const popsUp2 = (joinedAt: number | null, list: PublicNotice[], o: Opened, seen = EMPTY_MEMORY, now = NOW2, held = free) =>
+  noticeToPop(mayPopAmong(list, pamphletMayPop(joinedAt, now, held), true, { mayPop: issue2MayPop(joinedAt, now, held, o), opened: o }), seen, now)?.id ??
+  null;
+
+/** me() as openedOf reads it: nothing open, a 明日方舟 player */
+const meWith = (over: Partial<Parameters<typeof openedOf>[0]> = {}) =>
+  ({
+    squad: undefined,
+    listen: undefined,
+    passes: undefined,
+    study: undefined,
+    haimao: undefined,
+    fish: undefined,
+    profile2: false,
+    records: false,
+    profile: { games: ["arknights"] },
+    ...over,
+  }) as Parameters<typeof openedOf>[0];
+
+describe("第 2 期: whose it is", () => {
+  it("is a reader's once all five it leads with are open to them, whatever else is", () => {
+    expect(HEADLINERS).toEqual(["squad", "listen", "passes", "study", "haimao"]);
+    expect(issue2Ready(ALL)).toBe(true);
+    expect(issue2Ready(NONE_OPEN)).toBe(false);
+    for (const k of HEADLINERS) expect(issue2Ready({ ...ALL, [k]: false }), k).toBe(false);
+    expect(issue2Ready({ ...ALL, disco: false, fish: false, profile: false })).toBe(true);
+  });
+
+  it("is one's who plays 终末地 alone without 一起卫戍, which never shows to them", () => {
+    expect(issue2Ready(ENDFIELD)).toBe(true);
+    for (const k of ["listen", "passes", "study", "haimao"] as const) expect(issue2Ready({ ...ENDFIELD, [k]: false }), k).toBe(false);
+    expect(issue2Pages(ENDFIELD)).toEqual(["cover", "listen", "disco", "passes", "study", "haimao", "fish", "profile"]);
+  });
+
+  it("is read off me() as the map shows each part to the player", () => {
+    expect(openedOf(meWith())).toEqual(NONE_OPEN);
+    const open = meWith({
+      squad: {} as never,
+      listen: { paused: false, room: false, roomMax: 20, mode: "admins", disco: true },
+      passes: {} as never,
+      study: {} as never,
+      haimao: {} as never,
+      fish: true,
+      profile2: true,
+      records: true,
+    });
+    expect(openedOf(open)).toEqual(ALL);
+    // the disco goes with 听歌, and only where it is open (DISCO)
+    expect(openedOf({ ...open, listen: { paused: false, room: false, roomMax: 20, mode: "admins" } }).disco).toBe(false);
+    // the new 我的资料 is 我的记录 too: both, or no page
+    expect(openedOf({ ...open, records: false }).profile).toBe(false);
+    expect(openedOf({ ...open, profile2: false }).profile).toBe(false);
+    // 终末地 alone; both games are 明日方舟's too
+    expect(openedOf({ ...open, squad: undefined, profile: { games: ["endfield"] } })).toEqual(ENDFIELD);
+    expect(openedOf({ ...open, profile: { games: ["arknights", "endfield"] } }).endfield).toBe(false);
+    expect(openedOf({ ...open, profile: { games: [] } }).endfield).toBe(false);
+  });
+
+  it("is kept in a word that changes only as it does", () => {
+    expect(openedKey(ALL)).toBe("111111110");
+    expect(openedKey(NONE_OPEN)).toBe("000000000");
+    for (const o of [ALL, ENDFIELD, NONE_OPEN, { ...ALL, fish: false, disco: false }]) expect(openedOfKey(openedKey(o))).toEqual(o);
+  });
+});
+
+describe("第 2 期: its pages", () => {
+  it("are the cover and nine, in the promo's order, for a reader who has it all", () => {
+    const pages = issue2Pages(ALL);
+    expect(pages).toEqual(["cover", "squad", "plays", "listen", "disco", "passes", "study", "haimao", "fish", "profile"]);
+    expect(pageText("squad", pageNo(1), NOW2).kicker).toBe("01 · 卫戍摇人");
+    expect(pageText("profile", pageNo(9), NOW2).kicker).toBe("09 · 我的资料");
+    expect(coverCount(pages)).toBe("一共 9 样，一页一样。中途关掉也行，以后在「公告」里还能再翻。");
+  });
+
+  it("leave out what is not open to the reader, the others moving up", () => {
+    const pages = issue2Pages({ ...ALL, disco: false, fish: false });
+    expect(pages).toEqual(["cover", "squad", "plays", "listen", "passes", "study", "haimao", "profile"]);
+    expect(pageText(pages[4] as UpdatePage, pageNo(4), NOW2).kicker).toBe("04 · 通行证");
+    // the disco only with 听歌
+    expect(issue2Pages({ ...ALL, listen: false })).not.toContain("disco");
+    // the games are in 一起卫戍's rooms
+    expect(issue2Pages(ENDFIELD)).not.toContain("plays");
+  });
+
+  it("say how many one 一起听 holds for the reader", () => {
+    expect(pageText("listen", "03", NOW2, { roomMax: 600 }).lines[1]).toContain("最多 600 人跟着房主一起听");
+    expect(pageText("listen", "03", NOW2).lines[1]).toContain(`最多 ${LISTEN_DEFAULTS.roomMax} 人跟着房主一起听`);
+  });
+
+  it("put 香艳制作人's small print under hers, and none under the others", () => {
+    expect(pageText("haimao", "07", NOW2).note).toBe(HAIMAO_LINES.disclaimer);
+    expect(HAIMAO_LINES.disclaimer).toBe("*与鹰角网络无关");
+    for (const p of issue2Pages(ALL).slice(1) as Page2[]) if (p !== "haimao") expect(pageText(p, "01", NOW2).note, p).toBeNull();
+  });
+
+  it("have no quote, close what they mark, and leave nothing to fill in", () => {
+    for (const p of issue2Pages(ALL).slice(1) as Page2[]) {
+      const t = pageText(p, "01", NOW2);
+      expect(t.quote, p).toBeNull();
+      expect(t.lines.length, p).toBeGreaterThanOrEqual(3);
+      expect(pageTitle(p), p).toBe(t.title);
+      for (const l of t.lines) {
+        expect(l.split("**").length % 2, l).toBe(1);
+        expect(l, l).not.toMatch(/[{}]/);
+      }
+    }
+  });
+});
+
+describe("第 2 期: on the board and popping up", () => {
+  it("has its row, counting the reader's pages", () => {
+    const p = pamphlet2Notice(ALL);
+    expect(p).toMatchObject({ id: PAMPHLET_2_ID, title: "最近更新 · 第 2 期", pop: "once", pinned: false, publishedAt: PAMPHLET_2_FROM });
+    expect(p.excerpt).toBe("这回新开的九样，滑着看");
+    expect(pamphlet2Notice(ENDFIELD).excerpt).toBe("这回新开的七样，滑着看");
+    expect(isPamphlet(p)).toBe(true);
+    expect(isPamphlet(pamphletNotice(true))).toBe(true);
+    expect(isPamphlet(welcome)).toBe(false);
+    expect(issueOf(p)).toBe(2);
+    expect(issueOf(pamphletNotice(true))).toBe(1);
+    expect(PAMPHLET_2_FROM).toBeGreaterThan(PAMPHLET_1_FROM);
+  });
+
+  it("is on the board above 第 1 期 for a reader who has it, 第 1 期 new no more", () => {
+    const board = withBooklets([welcome], true, ALL);
+    expect(board.map((n) => n.id)).toEqual(["welcome", PAMPHLET_2_ID, PAMPHLET_ID]);
+    const one = board.find((n) => n.id === PAMPHLET_ID)!;
+    expect(isNew(one, EMPTY_MEMORY, PAMPHLET_2_FROM - 1)).toBe(true);
+    expect(isNew(one, EMPTY_MEMORY, PAMPHLET_2_FROM)).toBe(false);
+    expect(stripNotice(board, EMPTY_MEMORY, NOW2)?.id).toBe(PAMPHLET_2_ID);
+    expect(stripNotice(board, noticeRead(EMPTY_MEMORY, PAMPHLET_2_ID), NOW2)).toBeNull();
+    expect(noticeDot(board, noticeRead(EMPTY_MEMORY, PAMPHLET_2_ID), NOW2)).toBe(false);
+    // and for one who does not: 第 1 期 alone, as before
+    const before = withBooklets([welcome], true, NONE_OPEN);
+    expect(before.map((n) => n.id)).toEqual(["welcome", PAMPHLET_ID]);
+    expect(isNew(before[1], EMPTY_MEMORY, NOW2)).toBe(true);
+    expect(before).toEqual(withPamphlet([welcome], pamphletNotice(true)));
+  });
+
+  it("pops up within its 30 days, for players who signed up before it came", () => {
+    expect(issue2MayPop(BEFORE2, PAMPHLET_2_FROM - 1, free, ALL)).toBe(false);
+    expect(issue2MayPop(BEFORE2, PAMPHLET_2_FROM, free, ALL)).toBe(true);
+    expect(issue2MayPop(BEFORE2, PAMPHLET_2_FROM + 30 * DAY - 1, free, ALL)).toBe(true);
+    expect(issue2MayPop(BEFORE2, PAMPHLET_2_FROM + 30 * DAY, free, ALL)).toBe(false);
+    expect(issue2MayPop(PAMPHLET_2_FROM - 1, NOW2, free, ALL)).toBe(true);
+    expect(issue2MayPop(PAMPHLET_2_FROM, NOW2, free, ALL)).toBe(false);
+    expect(popsUp2(BEFORE2, [welcome], ALL)).toBe(PAMPHLET_2_ID);
+    expect(popsUp2(BEFORE2, [welcome], ENDFIELD)).toBe(PAMPHLET_2_ID);
+    expect(popsUp2(BEFORE2, [welcome], ALL, noticeRead(EMPTY_MEMORY, PAMPHLET_2_ID))).toBe("welcome");
+    expect(isNew(pamphlet2Notice(ALL), EMPTY_MEMORY, PAMPHLET_2_FROM + 30 * DAY - 1)).toBe(true);
+    expect(isNew(pamphlet2Notice(ALL), EMPTY_MEMORY, PAMPHLET_2_FROM + 30 * DAY)).toBe(false);
+  });
+
+  it("never for a reader who does not have it, nor a visitor, nor during the tutorial or while gray", () => {
+    for (const k of HEADLINERS) expect(issue2MayPop(BEFORE2, NOW2, free, { ...ALL, [k]: false }), k).toBe(false);
+    expect(issue2MayPop(null, NOW2, free, ALL)).toBe(false);
+    expect(issue2MayPop(BEFORE2, NOW2, { tutorial: true, gray: false }, ALL)).toBe(false);
+    expect(issue2MayPop(BEFORE2, NOW2, { tutorial: false, gray: true }, ALL)).toBe(false);
+    expect(popsUp2(BEFORE2, [welcome], ALL, EMPTY_MEMORY, NOW2, { tutorial: true, gray: false })).toBe("welcome");
+  });
+
+  it("in place of 第 1 期, which never pops up again for a reader who has it", () => {
+    // within 第 1 期's 30 days, signed up before both, neither read
+    const both = PAMPHLET_1_FROM + 20 * DAY;
+    expect(both).toBeGreaterThan(PAMPHLET_2_FROM);
+    expect(pamphletMayPop(BEFORE, both, free)).toBe(true);
+    expect(popsUp2(BEFORE, [welcome], ALL, EMPTY_MEMORY, both)).toBe(PAMPHLET_2_ID);
+    expect(popsUp2(BEFORE, [welcome], ALL, noticeRead(EMPTY_MEMORY, PAMPHLET_2_ID), both)).toBe("welcome");
+    // signed up after 第 2 期 came: no booklet at all, 第 1 期 neither
+    expect(popsUp2(PAMPHLET_2_FROM + 1, [welcome], ALL, EMPTY_MEMORY, both)).toBe("welcome");
+    // one who does not have 第 2 期 yet: 第 1 期, as before
+    expect(popsUp2(BEFORE, [welcome], NONE_OPEN, EMPTY_MEMORY, both)).toBe(PAMPHLET_ID);
+    expect(mayPopAmong([welcome], true, true, { mayPop: false, opened: ALL })).toEqual([welcome]);
+  });
+});
+
+describe("第 2 期: its buttons", () => {
+  const player: Reader = { signedIn: true, asking: false, passwordSet: false };
+  const visitor: Reader = { signedIn: false, asking: false, passwordSet: null };
+
+  it("take a player to each, as its own button opens it", () => {
+    const to = Object.fromEntries((issue2Pages(ALL).slice(1) as Page2[]).map((p) => [p, pageButton(p, player)]));
+    expect(to).toEqual({
+      squad: { action: "squad", label: "去卫戍看看", done: false },
+      plays: { action: "squad", label: "去卫戍找个房间", done: false },
+      listen: { action: "listen", label: "打开听歌", done: false },
+      disco: { action: "listen", label: "去放首歌", done: false },
+      passes: { action: "passes", label: "去寻访", done: false },
+      study: { action: "study", label: "去上今天的课", done: false },
+      haimao: { action: "haimao", label: "去漕河泾找她", done: false },
+      fish: { action: "fish", label: "去河堤钓鳞", done: false },
+      profile: { action: "profile", label: "打开我的资料", done: false },
+    });
+  });
+
+  it("leave a visitor 325大学习's and 香艳制作人's, and none while the visit asks first", () => {
+    for (const p of issue2Pages(ALL).slice(1) as Page2[]) {
+      expect(pageButton(p, visitor) !== null, p).toBe(p === "study" || p === "haimao");
+      expect(pageButton(p, { ...player, asking: true }), p).toBeNull();
+    }
+  });
+});
+
+describe("第 2 期's booklet", () => {
+  const props = {
+    issue: 2 as const,
+    opened: ALL,
+    uiChoice: true,
+    signedIn: true,
+    asking: false,
+    ui: "drawer" as const,
+    mapStyle: "lite" as const,
+    onAction: () => {},
+    onClose: () => {},
+  };
+  const html = (p: Partial<typeof props> & { roomMax?: number } = {}) => renderToStaticMarkup(createElement(Pamphlet, { ...props, ...p }));
+  const count = (s: string, part: string) => s.split(part).length - 1;
+
+  it("opens on its cover, with its own words and the list of its pages", () => {
+    const s = html();
+    expect(s).toContain(`aria-label="${T.pamphlet.label}"`);
+    expect(s).toContain("舟P地图 · 最近更新 · 第 2 期");
+    expect(s).toContain("这回，能一起玩的多了");
+    expect(s).toContain("这回新开的都在这儿，往左滑，一页一样。");
+    expect(s).not.toContain("这几天，地图上多了这些");
+    for (let i = 1; i <= 9; i++) expect(s).toContain(`<span class="no">${pageNo(i)}</span>`);
+    for (const p of issue2Pages(ALL).slice(1) as Page2[]) expect(s).toContain(pageTitle(p));
+    expect(s).toContain("pa2-cover");
+    expect(count(s, 'class="pp-page"')).toBe(10);
+    expect(count(s, "inert")).toBe(9);
+  });
+
+  it("draws the first page's picture, those further on waiting", () => {
+    const s = html();
+    expect(s).toContain(T.squad.list.lastOne);
+    expect(s).toContain('class="pp-art pa2-fish"');
+    expect(s).not.toContain("/fish/koi.webp");
+  });
+
+  it("has the reader's pages only", () => {
+    const s = html({ opened: ENDFIELD });
+    expect(count(s, 'class="pp-page"')).toBe(8);
+    expect(s).not.toContain("卫戍摇人");
+    expect(s).toContain("01 · 听歌");
+  });
+
+  it("says 一起听's size and 香艳制作人's small print", () => {
+    expect(html({ roomMax: 600 })).toContain("最多 600 人");
+    const s = html();
+    expect(s).toContain(`<p class="pp-note">${HAIMAO_LINES.disclaimer}</p>`);
+    expect(count(s, 'class="pp-note"')).toBe(1);
+    expect(s).not.toContain("**");
+  });
+
+  it("has a visitor's buttons only", () => {
+    const s = html({ signedIn: false });
+    for (const l of ["去上今天的课", "去漕河泾找她"]) expect(s, l).toContain(l);
+    for (const l of ["去卫戍看看", "打开听歌", "去寻访", "去河堤钓鳞", "打开我的资料"]) expect(s, l).not.toContain(l);
+  });
+
+  it("leaves 第 1 期 as it was", () => {
+    const one = renderToStaticMarkup(createElement(Pamphlet, { ...props, issue: 1 }));
+    expect(one).toContain("这几天，地图上多了这些");
+    expect(one).not.toContain("pa2-");
+    expect(count(one, 'class="pp-page"')).toBe(10);
   });
 });

@@ -5,7 +5,9 @@ import { describe, expect, it } from "vitest";
 
 const SRC = fileURLToPath(new URL("../..", import.meta.url));
 const read = (path: string) => readFileSync(join(SRC, path), "utf8");
-const BOOKLET = "components/app/Pamphlet.tsx";
+/** The booklet's files, 第 2 期's pictures too, and its stylesheets */
+const BOOKLET = ["components/app/Pamphlet.tsx", "components/app/PamphletArt2.tsx"];
+const SHEETS = ["components/app/pamphlet.css", "components/app/pamphlet2.css"];
 
 /** s cut at each sep that is outside any brackets */
 function splitTop(s: string, sep: RegExp): string[] {
@@ -84,30 +86,33 @@ function classesPut(source: string): Set<string> {
 }
 
 /** For each class some other part of the site puts on an element, the files that do */
-function classesOutside(booklet: string): Map<string, string[]> {
+function classesOutside(booklet: readonly string[]): Map<string, string[]> {
   const by = new Map<string, string[]>();
   for (const file of readdirSync(SRC, { recursive: true }) as string[]) {
-    if (!/\.tsx?$/.test(file) || /\.test\.tsx?$/.test(file) || file === booklet) continue;
+    if (!/\.tsx?$/.test(file) || /\.test\.tsx?$/.test(file) || booklet.includes(file)) continue;
     for (const name of classesPut(read(file))) by.set(name, [...(by.get(name) ?? []), file]);
   }
   return by;
 }
 
 /**
- * 最近更新's stylesheet comes with the booklet: it is on the page from the first time the booklet opens (by itself on
- * a first visit, or from 公告) until the page is left, the booklet closed or not. A rule of it that matched something
- * outside the booklet changed that from then on: its picture paper `.pa`, a 330 × 220 sheet, lay over 抽屉's row of
- * buttons on a computer, also `.pa`, and its `.pp-x` reached the ✕ of the pass popped up from a profile card.
+ * 最近更新's stylesheets (第 2 期's pictures have their own) come with the booklet: they are on the page from the first
+ * time the booklet opens (by itself on a first visit, or from 公告) until the page is left, the booklet closed or not.
+ * A rule of them that matched something outside the booklet changed that from then on: its picture paper `.pa`, a
+ * 330 × 220 sheet, lay over 抽屉's row of buttons on a computer, also `.pa`, and its `.pp-x` reached the ✕ of the pass
+ * popped up from a profile card.
  */
 describe("最近更新's stylesheet", () => {
   const outside = classesOutside(BOOKLET);
-  const sheet = selectors(read("components/app/pamphlet.css"));
+  const sheet = SHEETS.flatMap((file) => selectors(read(file)));
 
   it("is read whole, and so are the classes the rest of the site puts on elements", () => {
     expect(sheet.length).toBeGreaterThan(200);
     expect(sheet).toContain(".pp-art");
     expect(sheet).toContain(":where(.pamphlet) .pp-x");
     expect(sheet).toContain(".pp-l-pic.cover");
+    expect(sheet).toContain(".pp-art.pa2-cover");
+    expect(sheet).toContain(".pa2-plays .tile .pg-ico");
     expect(entryClasses(".pp-wide .pp-x svg")).toEqual(["pp-wide"]);
     expect(entryClasses(":lang(en) .pp-stamp")).toEqual(["pp-stamp"]);
     expect(entryClasses(":where(.pamphlet) button")).toEqual(["pamphlet"]);

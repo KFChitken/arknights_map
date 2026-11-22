@@ -12,20 +12,28 @@ import { INBOX_TABS, tabLabel } from "@/lib/inboxTabs";
 import { MAP_STYLE_NAMES, type MapStyle } from "@/lib/mapStyle";
 import {
   coverCount,
+  isPage2,
+  issuePages,
+  issueWords,
   markedParts,
   newestLines,
+  NONE_OPEN,
   pageButton,
   pageNo,
   pageText,
-  pamphletPages,
+  pageTitle,
+  type Issue,
+  type Opened,
+  type Page1,
+  type PageFor,
   type PamphletAction,
   type PamphletPage,
   type Reader,
-  type UpdatePage,
 } from "@/lib/pamphlet";
 import { siteName } from "@/lib/rules";
 import { UI_NAMES, type UiName } from "@/lib/uiChoice";
 import { UiIcon } from "./chrome/parts";
+import { Art2, CoverArt2 } from "./PamphletArt2";
 import { SiPicture } from "./Si";
 import "./pamphlet.css";
 
@@ -34,9 +42,13 @@ import "./pamphlet.css";
  * under them or the cover's list. On a phone, or any window under 1000 × 680, a paper card over the map; on a
  * computer, an open book: a picture on the left page, the words on the right, arrows outside it and a dot for each
  * page under it. Over everything on the map, in each of the three layouts. ×, 知道了, a tap beside it and Escape
- * close it (onClose); a page's button closes it too, and takes the player there (onAction).
+ * close it (onClose); a page's button closes it too, and takes the player there (onAction). Either issue, the same
+ * way: 第 2 期's pictures are in PamphletArt2.tsx.
  */
 export default function Pamphlet({
+  issue = 1,
+  opened = NONE_OPEN,
+  roomMax,
   uiChoice,
   signedIn,
   asking,
@@ -45,7 +57,12 @@ export default function Pamphlet({
   onAction,
   onClose,
 }: {
-  /** players may pick a 界面 (UI_CHOICE), so its page is in */
+  issue?: Issue;
+  /** 第 2 期: what of it is open to the reader, which pages it has */
+  opened?: Opened;
+  /** how many one 一起听 holds for them, which 听歌's page says */
+  roomMax?: number;
+  /** players may pick a 界面 (UI_CHOICE), so 第 1 期's page of it is in */
   uiChoice: boolean;
   signedIn: boolean;
   /** this visit asks first whether they are 18, or to agree to the new privacy policy: no buttons */
@@ -56,7 +73,7 @@ export default function Pamphlet({
   onAction: (action: PamphletAction) => void;
   onClose: () => void;
 }) {
-  const pages = pamphletPages(uiChoice);
+  const pages = issuePages(issue, uiChoice, opened);
   const last = pages.length - 1;
   const [page, setPage] = useState(0);
   const pageRef = useRef(page);
@@ -152,7 +169,7 @@ export default function Pamphlet({
   // a tap on the dim beside it, begun there too (a drag out of the pages is not one)
   const onDim = useRef(false);
   const now = Date.now();
-  const at = { page, last, pages, go, near, reader, ui, mapStyle, now, onAction, onClose };
+  const at = { issue, forReader: { roomMax }, page, last, pages, go, near, reader, ui, mapStyle, now, onAction, onClose };
   const track = (
     <div className="pp-view" onPointerDown={down} onClickCapture={swallow}>
       <div className="pp-track" style={{ transform: `translateX(${-page * 100}%)` }}>
@@ -271,6 +288,8 @@ function keepFocus(e: KeyboardEvent, root: HTMLElement | null) {
 }
 
 type At = {
+  issue: Issue;
+  forReader: PageFor;
   page: number;
   last: number;
   pages: PamphletPage[];
@@ -285,25 +304,24 @@ type At = {
 };
 
 /** On a phone: the picture, then the words under it, scrolling on a short screen */
-function PhonePage({ p, i, pages, go, near, reader, ui, mapStyle, now, onAction }: At & { p: PamphletPage; i: number }) {
+function PhonePage({ issue, forReader, p, i, pages, go, near, reader, ui, mapStyle, now, onAction }: At & { p: PamphletPage; i: number }) {
   if (p === "cover") {
+    const w = issueWords(issue);
     return (
       <div className="pp-in">
-        <div className="pp-pic cover">
-          <CoverArt />
-        </div>
-        <div className="pp-kicker">{T.pamphlet.issue}</div>
-        <h2 className="pp-title cover">{T.pamphlet.cover.title}</h2>
-        <p className="pp-sub">{T.pamphlet.cover.subPhone}</p>
+        <div className="pp-pic cover">{issue === 2 ? <CoverArt2 /> : <CoverArt />}</div>
+        <div className="pp-kicker">{w.issue}</div>
+        <h2 className="pp-title cover">{w.cover.title}</h2>
+        <p className="pp-sub">{w.cover.subPhone}</p>
         <Contents pages={pages} go={go} />
       </div>
     );
   }
-  const text = pageText(p, pageNo(i), now);
+  const text = pageText(p, pageNo(i), now, forReader);
   return (
     <div className="pp-in">
       <div className="pp-pic">
-        <Art page={p} drawn={near.has(i)} ui={ui} mapStyle={mapStyle} />
+        <Art page={p} drawn={near.has(i)} ui={ui} mapStyle={mapStyle} roomMax={forReader.roomMax} />
       </div>
       <Words text={text} />
       <Button page={p} reader={reader} onAction={onAction} />
@@ -312,38 +330,37 @@ function PhonePage({ p, i, pages, go, near, reader, ui, mapStyle, now, onAction 
 }
 
 /** On a computer: the page's number and its picture on the left page, the words on the right */
-function DeskPage({ p, i, last, pages, go, near, reader, ui, mapStyle, now, onAction, onClose }: At & { p: PamphletPage; i: number }) {
+function DeskPage({ issue, forReader, p, i, last, pages, go, near, reader, ui, mapStyle, now, onAction, onClose }: At & { p: PamphletPage; i: number }) {
+  const w = issueWords(issue);
   if (p === "cover") {
     return (
       <div className="pp-spread">
         <div className="pp-left">
           <div className="pp-l-brand">{T.pamphlet.brand}</div>
-          <div className="pp-l-date">{T.pamphlet.issueDate}</div>
+          <div className="pp-l-date">{w.issueDate}</div>
           <div className="pp-stamp" aria-hidden="true">
             {T.common.new}
           </div>
-          <div className="pp-l-pic cover">
-            <CoverArt />
-          </div>
+          <div className="pp-l-pic cover">{issue === 2 ? <CoverArt2 /> : <CoverArt />}</div>
           <p className="pp-l-count">{coverCount(pages)}</p>
         </div>
         <div className="pp-right">
-          <div className="pp-kicker">{T.pamphlet.issue}</div>
-          <h2 className="pp-title cover">{T.pamphlet.cover.title}</h2>
-          <p className="pp-sub">{T.pamphlet.cover.subDesk}</p>
+          <div className="pp-kicker">{w.issue}</div>
+          <h2 className="pp-title cover">{w.cover.title}</h2>
+          <p className="pp-sub">{w.cover.subDesk}</p>
           <Contents pages={pages} go={go} />
         </div>
       </div>
     );
   }
-  const text = pageText(p, pageNo(i), now);
+  const text = pageText(p, pageNo(i), now, forReader);
   return (
     <div className="pp-spread">
       <div className="pp-left" aria-hidden="true">
         <div className="pp-no">{pageNo(i)}</div>
         <div className="pp-bar" />
         <div className="pp-l-pic">
-          <Art page={p} drawn={near.has(i)} ui={ui} mapStyle={mapStyle} />
+          <Art page={p} drawn={near.has(i)} ui={ui} mapStyle={mapStyle} roomMax={forReader.roomMax} />
         </div>
       </div>
       <div className="pp-right">
@@ -355,7 +372,7 @@ function DeskPage({ p, i, last, pages, go, near, reader, ui, mapStyle, now, onAc
           </button>
         )}
         <div className="pp-folio">
-          <span>{T.pamphlet.issue}</span>
+          <span>{w.issue}</span>
           <span>
             {pageNo(i)} / {pageNo(last)}
           </span>
@@ -373,7 +390,7 @@ function Contents({ pages, go }: { pages: PamphletPage[]; go: (i: number) => voi
         p === "cover" ? null : (
           <button key={p} onClick={() => go(i)}>
             <span className="no">{pageNo(i)}</span>
-            <span className="t">{T.pamphlet.pages[p].title}</span>
+            <span className="t">{pageTitle(p)}</span>
             <Chev dir="right" size={14} width={2} />
           </button>
         ),
@@ -398,6 +415,7 @@ function Words({ text }: { text: ReturnType<typeof pageText> }) {
           </div>
         ))}
       </div>
+      {text.note && <p className="pp-note">{text.note}</p>}
     </>
   );
 }
@@ -467,8 +485,9 @@ function CoverArt() {
 }
 
 /** A page's picture; until the reader comes near its page, only its paper */
-function Art({ page, drawn, ui, mapStyle }: { page: UpdatePage; drawn: boolean; ui: UiName; mapStyle: MapStyle }) {
-  const art: Record<UpdatePage, () => ReactNode> = {
+function Art({ page, drawn, ui, mapStyle, roomMax }: { page: Exclude<PamphletPage, "cover">; drawn: boolean; ui: UiName; mapStyle: MapStyle; roomMax?: number }) {
+  if (isPage2(page)) return <Art2 page={page} drawn={drawn} roomMax={roomMax} />;
+  const art: Record<Page1, () => ReactNode> = {
     ui: () => <ArtUi ui={ui} />,
     mains: () => <ArtMains />,
     inbox: () => <ArtInbox />,

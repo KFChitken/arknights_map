@@ -3,7 +3,22 @@ import { preconnect } from "react-dom";
 import GrayMode from "@/components/GrayMode";
 import MapApp from "@/components/MapApp";
 import { countAmapLoad } from "@/lib/server/amapLoads";
-import { haimaoClips, haimaoMode, isProd, MAIL_SLOW_DAILY_LIMIT, MAIL_SLOW_DOMAINS, studyMode, UI_CHOICE } from "@/lib/server/env";
+import {
+  discoMode,
+  fishMode,
+  haimaoClips,
+  haimaoMode,
+  isProd,
+  listenMode,
+  MAIL_SLOW_DAILY_LIMIT,
+  MAIL_SLOW_DOMAINS,
+  passesMode,
+  profile2Mode,
+  recordsMode,
+  squadMode,
+  studyMode,
+  UI_CHOICE,
+} from "@/lib/server/env";
 import { ipFrom } from "@/lib/server/http";
 import { mainlandMap } from "@/lib/server/mainlandMap";
 import { noticeList } from "@/lib/server/notices";
@@ -33,6 +48,19 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
   const mailPaused = MAIL_SLOW_DAILY_LIMIT < 1 ? MAIL_SLOW_DOMAINS : [];
   // 公告, from memory, with the page: the board and the notice that pops up need no ask of their own
   const { stamp, notices } = noticeList(Date.now());
+  // what 最近更新 第 2 期 tells a visitor of (src/lib/pamphlet.ts): what is out for everyone; a player's comes with me()
+  const on = (mode: "on" | "admins" | "off") => mode === "on";
+  const allOpen = {
+    squad: on(squadMode()),
+    listen: on(listenMode()),
+    disco: on(listenMode()) && on(discoMode()),
+    passes: on(passesMode()),
+    study: on(studyMode()),
+    haimao: on(haimaoMode()),
+    fish: on(fishMode()),
+    profile: on(profile2Mode()) && on(recordsMode()),
+    endfield: false,
+  };
   return (
     <>
       {/* 全站变灰, from memory too: gray from the first look */}
@@ -50,6 +78,7 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
         studyGuests={studyMode() === "on"}
         haimaoGuests={haimaoMode() === "on"}
         haimaoClips={haimaoClips() && haimaoMode() !== "off"}
+        allOpen={allOpen}
       />
     </>
   );

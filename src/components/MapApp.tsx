@@ -322,11 +322,18 @@ import { discoOpenTo, prefetchDisco, useDiscoChosen } from "@/lib/disco";
 import {
   actionMayRun,
   hintsMayCome,
+  issue2MayPop,
+  issueOf,
   isPamphlet,
   mayPopAmong,
+  NONE_OPEN,
+  openedKey,
+  openedOf,
+  openedOfKey,
   pamphletMayPop,
-  pamphletNotice,
-  withPamphlet,
+  withBooklets,
+  type Issue,
+  type Opened,
   type PamphletAction,
 } from "@/lib/pamphlet";
 import RoachIcon from "./RoachIcon";
@@ -593,6 +600,8 @@ const PLACING_LABEL: Record<PlaceTarget["kind"], string> = {
  * studyGuests: 325大学习 is open to visitors who have not signed in as well (STUDY=on); a player has it from me.study.
  * haimaoGuests: 香艳制作人 shows to visitors who have not signed in as well (HAIMAO=on); a player learns it from me.haimao.
  * haimaoClips: her dame dame is her damedane clip (HAIMAO_CLIPS), not sung in code.
+ * allOpen: what 最近更新 第 2 期 tells a visitor who has not signed in of (src/lib/pamphlet.ts Opened): what is out
+ * for everyone (SQUAD=on and the rest); a player's is as me() says.
  */
 /** 全员隐匿 is all a visitor who has not signed in can have: every other style says to sign in */
 const guestStyles = (): Partial<Record<MapStyle, string>> =>
@@ -618,6 +627,7 @@ export default function MapApp({
   studyGuests = false,
   haimaoGuests = false,
   haimaoClips = false,
+  allOpen = NONE_OPEN,
 }: {
   cn: boolean;
   home?: MainlandMap;
@@ -627,6 +637,7 @@ export default function MapApp({
   studyGuests?: boolean;
   haimaoGuests?: boolean;
   haimaoClips?: boolean;
+  allOpen?: Opened;
 }) {
   const worldRef = useRef<World | null>(null);
   // the development hooks' made-up crowd (zhoupFakeFeed below); the server's roaches come by area (areaRef)
@@ -742,11 +753,13 @@ export default function MapApp({
     popped: { userId: string; then: () => void; noticeId: string; hide: boolean } | null;
   } | null>(null);
   /**
-   * 最近更新 (src/lib/pamphlet.ts), the booklet the page adds to the notices, while open: popped up (whose visit it
-   * was, and what opens once it is closed), or opened from the board's list (closed, the list is there under it) or
-   * from the strip
+   * 最近更新 (src/lib/pamphlet.ts), the booklets the page adds to the notices, while one is open (issue): popped up
+   * (whose visit it was, and what opens once it is closed), or opened from the board's list (closed, the list is
+   * there under it) or from the strip
    */
-  const [pamphlet, setPamphlet] = useState<{ from: "popped"; userId: string; then: () => void } | { from: "board" | "strip" } | null>(null);
+  const [pamphlet, setPamphlet] = useState<
+    ({ from: "popped"; userId: string; then: () => void } | { from: "board" | "strip" }) & { issue: Issue } | null
+  >(null);
   /** It popped up by itself on this visit, which has said enough: the hints wait for the next */
   const [pamphletPopped, setPamphletPopped] = useState(false);
   /** Where a button pressed in it takes the player, once what waited for it has had its turn; a press, to look again */
@@ -782,9 +795,15 @@ export default function MapApp({
   }, [studyGuests]);
   /** 换个画风: the style card opens (MapStylePicker openSignal) */
   const [styleAsk, setStyleAsk] = useState(0);
-  /** The notices as the board, the red dot and the strip have them: the server's, with the booklet among them */
-  const boardNotices = useMemo(() => withPamphlet(notices.notices, pamphletNotice(uiChoice)), [notices, uiChoice]);
-  const shownNotices = () => withPamphlet(noticesRef.current.notices, pamphletNotice(uiChoice));
+  /**
+   * What 最近更新 第 2 期 tells this reader of, as the map shows it to them: a player's as me() says, a visitor's what
+   * is out for everyone; none on the English site. Kept by its word of 0s and 1s, as me() changes far more often
+   */
+  const bookletKey = openedKey(lang() !== "zh" ? NONE_OPEN : me ? openedOf(me) : allOpen);
+  const bookletOpen = useMemo(() => openedOfKey(bookletKey), [bookletKey]);
+  /** The notices as the board, the red dot and the strip have them: the server's, with the booklets among them */
+  const boardNotices = useMemo(() => withBooklets(notices.notices, uiChoice, bookletOpen), [notices, uiChoice, bookletOpen]);
+  const shownNotices = () => withBooklets(noticesRef.current.notices, uiChoice, bookletOpen);
   // what this device remembers of them, once the page is in the browser
   useEffect(() => setNoticeMem(noticeMemory()), []);
   /** A change to what this device remembers of the notices, stored as well */
@@ -796,14 +815,17 @@ export default function MapApp({
   /**
    * Opening the map or signing in: the notice due (noticeToPop) pops up first, and what comes next waits
    * for it to be closed; with none due, what comes next comes now. 最近更新 is among them for a player who may
-   * have it now (src/lib/pamphlet.ts): popped up, it is the only thing that pops up by itself on this visit, as
-   * the guides' introductions wait for another
+   * have it now (src/lib/pamphlet.ts), 第 2 期 in place of 第 1 期 for one who has that: popped up, it is the only
+   * thing that pops up by itself on this visit, as the guides' introductions wait for another
    */
   const popNotice = useCallback(
     (m: Me, then: () => void) => {
       const now = Date.now();
-      const mayPop = pamphletMayPop(m.joinedAt, now, { tutorial: Boolean(tutorialStep(m, loadProgress(m.id))), gray: isGray() });
-      const n = noticeToPop(mayPopAmong(noticesRef.current.notices, mayPop, uiChoice), noticeMemRef.current, now, m.hiddenNotices);
+      const held = { tutorial: Boolean(tutorialStep(m, loadProgress(m.id))), gray: isGray() };
+      const opened = lang() === "zh" ? openedOf(m) : NONE_OPEN;
+      const two = { mayPop: issue2MayPop(m.joinedAt, now, held, opened), opened };
+      const list = mayPopAmong(noticesRef.current.notices, pamphletMayPop(m.joinedAt, now, held), uiChoice, two);
+      const n = noticeToPop(list, noticeMemRef.current, now, m.hiddenNotices);
       if (!n) return then();
       rememberNotices((mem) => noticeRead(mem, n.id));
       if (!isPamphlet(n)) {
@@ -811,7 +833,7 @@ export default function MapApp({
       }
       introduced.current = true;
       setPamphletPopped(true);
-      setPamphlet({ from: "popped", userId: m.id, then });
+      setPamphlet({ from: "popped", userId: m.id, then, issue: issueOf(n) });
     },
     [rememberNotices, uiChoice],
   );
@@ -836,14 +858,14 @@ export default function MapApp({
   /** The strip: its notice (or the booklet), as if the board was opened, too */
   const openStripped = (n: PublicNotice) => {
     rememberNotices((m) => noticeRead(boardOpened(m, shownNotices(), Date.now()), n.id));
-    if (isPamphlet(n)) return setPamphlet({ from: "strip" });
+    if (isPamphlet(n)) return setPamphlet({ from: "strip", issue: issueOf(n) });
     setBoard({ view: { kind: "notice", notice: n, counted: true }, popped: null });
   };
   const closeStrip = (n: PublicNotice) => rememberNotices((m) => stripClosed(m, n.id, shownNotices(), Date.now()));
   /** One notice from the list: read; the booklet opens over the list */
   const boardOpen = (n: PublicNotice) => {
     rememberNotices((m) => noticeRead(m, n.id));
-    if (isPamphlet(n)) return setPamphlet({ from: "board" });
+    if (isPamphlet(n)) return setPamphlet({ from: "board", issue: issueOf(n) });
     setBoard((b) => b && { ...b, view: { kind: "notice", notice: n, counted: false } });
   };
   /** Back to the list, which is the board opened too */
@@ -894,8 +916,9 @@ export default function MapApp({
       pamphletGo.current = go;
       setPamphletPress((n) => n + 1);
       introduced.current = true;
-      // 去宏村看看 is her introduction
+      // 去宏村看看 is her introduction, and 去漕河泾找她 香艳制作人's
       if (go === "si" && me) markSiIntroShown(me.id);
+      if (go === "haimao" && me) markHaimaoIntroShown(me.id);
     }
     if (was?.from === "popped") {
       markPopped(was.userId);
@@ -4617,11 +4640,21 @@ export default function MapApp({
     if (go === "ui") setUiMenu(true);
     else if (go === "styles") setStyleAsk((n) => n + 1);
     else if (go === "si") showSi();
+    else if (go === "study") setStudyOpen(true);
+    else if (go === "haimao") showHaimao();
     else if (!me) return;
     else if (go === "mains") setPanel({ kind: "onlyMains" });
     else if (go === "inbox") void openInbox(false);
     else if (go === "badges") setPanel({ kind: "badges", draft: me.profile });
     else if (go === "friends") void openFriends();
+    // 第 2 期's: each as its own button opens it
+    else if (go === "squad") setPanel({ kind: "squad" });
+    else if (go === "listen") setListenOpen(true);
+    else if (go === "passes") {
+      setPassesFrom("button");
+      setPassesOpen(true);
+    } else if (go === "fish") openFishWin();
+    else if (go === "profile") setPanel({ kind: "profile" });
     else setPanel({ kind: "profile", password: "set" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pamphletMayGo, pamphletPress]);
@@ -6348,6 +6381,9 @@ export default function MapApp({
       {/* over everything of each layout, the board it was opened from too */}
       {pamphlet && (
         <Pamphlet
+          issue={pamphlet.issue}
+          opened={bookletOpen}
+          roomMax={me?.listen?.roomMax}
           uiChoice={uiChoice}
           signedIn={Boolean(me)}
           asking={Boolean(me?.ageCheck || me?.mustReconsent)}
