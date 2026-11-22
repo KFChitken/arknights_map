@@ -536,6 +536,8 @@ export async function roomView(roomId: string, viewerId: string, now = Date.now(
     wentAt: room.state === "go" && room.wentAt ? room.wentAt.getTime() : null,
     waitedAt: room.waitedAt.getTime(),
     ...(room.schoolUntil && room.schoolUntil.getTime() > now ? { school: room.schoolUntil.getTime() } : {}),
+    // the fire, 准备 (inGame) and endsAt are also told as they are, which the pages take without reading this again (a
+    // stick: src/lib/server/squadPlay.ts addWood; 准备: readyTell): change how this shows them and change those
     fire: {
       level: room.fireLevel,
       prog: room.fireProg,
@@ -1294,21 +1296,44 @@ async function botDoes(roomId: string, h: number, what: Exclude<SquadBotDo, "add
   await tellRoom(roomId, done.what);
 }
 
-/** 准备 (on: in the game's alliance and ready), ticked by the player for everyone in the room to see; told to them when it comes on */
+/**
+ * 准备 (on: in the game's alliance and ready), ticked by the player for everyone in the room to see; told to them as
+ * it is (game, unready), with when the room ends by itself now and the state, keyAt and waitedAt it was in then: a page
+ * in another (a new key or a round over since, which make everyone ready again) reads the room again
+ */
 export async function setInGame(user: Pick<UserRow, "id">, body: Record<string, unknown>, now = Date.now()) {
   if (typeof body.on !== "boolean") throw refuse(400, T.server.common.badRequest);
   const mine = await roomOf(db, user.id);
   if (!mine) throw refuse(409, T.server.squad.notInRoom, NOT_IN_ROOM);
   if (mine.me.inGame !== body.on) {
+    // something happening: the wait starts over. The room first, told as it is then: a new key or a round over coming
+    // in between (each making everyone ready again) leaves it told in another state, key or wait than the pages have
+    const [room] = await db.update(squadRooms).set({ movedAt: new Date(now) }).where(eq(squadRooms.id, mine.room.id)).returning();
     await db
       .update(squadMembers)
       .set({ inGame: body.on })
       .where(and(eq(squadMembers.roomId, mine.room.id), eq(squadMembers.userId, user.id)));
-    // something happening: the wait starts over
-    await db.update(squadRooms).set({ movedAt: new Date(now) }).where(eq(squadRooms.id, mine.room.id));
-    await tellRoom(mine.room.id, body.on ? { kind: "game", h: mine.me.handle } : undefined);
+    await tellRoom(mine.room.id, room ? readyTell(room, mine.me.handle, body.on) : body.on ? { kind: "game", h: mine.me.handle } : undefined);
   }
   return { room: await roomView(mine.room.id, user.id, now), now };
+}
+
+/**
+ * What the room is told of h's 准备 on or off (setInGame): when it ends by itself now, as roomView has it (endsOf),
+ * and the state, keyAt and waitedAt it was in. The pages take it as it is (src/components/app/squad/squading.ts
+ * heardSquad): change what roomView shows of 准备 or of endsAt and change this.
+ */
+function readyTell(room: Room, h: number, on: boolean): RoomWhat {
+  const ends = endsOf(room);
+  return {
+    kind: on ? "game" : "unready",
+    h,
+    endsAt: ends.at,
+    endsWhy: ends.why,
+    state: room.state as SquadState,
+    keyAt: room.keyAt.getTime(),
+    waitedAt: room.waitedAt.getTime(),
+  };
 }
 
 /**

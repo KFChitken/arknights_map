@@ -100,9 +100,11 @@ export async function addWood(
       lastTop: room.fireLastTop,
       bestTop: room.fireBestTop,
     };
-    return { roomId: room.id, h: me.handle, fire, up: next.up, hand };
+    return { roomId: room.id, h: me.handle, fire, was: at, up: next.up, hand };
   });
-  await tellSquadPlay(done.roomId, { kind: "fire", h: done.h });
+  // the fire as it is now, which the pages take as it is (as roomView has it: change one and change the other), and its
+  // at before, so a page whose fire is not that one reads the room again (src/components/app/squad/squading.ts heardSquad)
+  await tellSquadPlay(done.roomId, { kind: "fire", h: done.h, fire: done.fire, was: done.was });
   return { now, fire: done.fire, up: done.up, wood: done.hand.wood, woodAt: done.hand.at };
 }
 

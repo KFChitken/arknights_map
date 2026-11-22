@@ -966,16 +966,13 @@ function RoomView({
     28,
   );
   const [, tick] = useState(0);
-  // the clock of what it shows: the server's when the room came, gone on since on this device
-  const cameAt = useRef({ server: room.now, device: Date.now() });
-  useEffect(() => {
-    cameAt.current = { server: room.now, device: Date.now() };
-  }, [room]);
   useEffect(() => {
     const t = window.setInterval(() => tick((n) => n + 1), 20_000);
     return () => window.clearInterval(t);
   }, []);
-  const now = cameAt.current.server + (Date.now() - cameAt.current.device);
+  // the clock of what it shows: the server's, as the room's answers put it (not the room's now, which a change taken as
+  // told keeps, nor when the sheet came: it may have been read long before)
+  const now = squadServerNow();
   const me = room.members.find((m) => m.you)!;
   const n = room.members.length;
   const keyAge = now - room.keyAt;

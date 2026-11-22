@@ -150,6 +150,35 @@ describe("篝火", () => {
     expect((await squad(a, "fire")).body).toMatchObject({ fire: { level: 10, prog: 0, top: 11 }, up: true });
   });
 
+  it("tells the room each stick with the fire as the one who put it got it, and its at before, as the room shows it to all", async () => {
+    const host = await player("host");
+    const a = await player("a");
+    const room = await opened(host);
+    await goIn(a, room);
+    const heard = hear(a);
+    const fires = () => heard.filter((t) => t.t === "room" && (t.what as { kind?: string })?.kind === "fire").map((t) => t.what);
+    // never lit: was null
+    const first = (await squad(host, "fire")).body!;
+    expect(fires()).toEqual([{ kind: "fire", h: room.you, fire: first.fire, was: null }]);
+    expect((await view(a)).fire).toEqual(first.fire);
+    // the next on it: was the first's at
+    later(5_000);
+    const second = (await squad(a, "fire")).body!;
+    expect(fires()[1]).toEqual({ kind: "fire", h: 2, fire: second.fire, was: (first.fire as { at: number }).at });
+    expect((await view(host)).fire).toEqual(second.fire);
+    // a round over in between carries the fire on from another at: the next stick tells that one
+    await db.update(squadMembers).set({ inGame: true }).where(eq(squadMembers.roomId, room.id));
+    await db.update(squadRooms).set({ stateAt: new Date(Date.now() - 120_000) }).where(eq(squadRooms.id, room.id));
+    expect((await squad(host, "state", { to: "go" })).status).toBe(200);
+    later(90_000);
+    await db.update(squadRooms).set({ stateAt: new Date(Date.now() - 120_000) }).where(eq(squadRooms.id, room.id));
+    expect((await squad(host, "state", { to: "wait" })).status).toBe(200);
+    const carried = (await view(a)).fire;
+    later(WOOD_EVERY_MS);
+    const third = (await squad(host, "fire")).body!;
+    expect(fires()[2]).toEqual({ kind: "fire", h: room.you, fire: third.fire, was: carried.at });
+  });
+
   it("keeps each 局's highest level and how long it burnt at the round's end, the last 局's and the room's highest", async () => {
     const host = await player("host");
     const a = await player("a");

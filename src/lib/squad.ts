@@ -506,11 +506,21 @@ export type SquadTell =
        * or 恢复加入; host: the host left, handing the room to h; listen: 卫戍的一起听 changed (on, over, someone in or
        * out of it, invited, 下次吧); lobby: a match's news (玩点什么, src/lib/squadMode.ts): h picked it (open), readied
        * (ready) or started it (start); handed from h to by (hand); gone, nobody ready (gone) or nobody doing anything
-       * (idle); mode: which, said even once it is gone
+       * (idle); mode: which, said even once it is gone. fire: h put a stick on: fire, as it is then, and was, its at
+       * before (null: never lit); game, unready: h's 准备 on or off, with the room's endsAt and endsWhy then, and the
+       * state, keyAt and waitedAt it was in. A page of now takes these as they are; a page of before reads the room
+       * again at each (unready too, a kind it does not know), as a page of now does at a fire or a game told without them.
        */
       what?: {
-        kind: "in" | "game" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen" | "pond" | "fire" | "shake" | "mode" | "quiz" | "gift" | "race" | "here";
+        kind: "in" | "game" | "unready" | "key" | "state" | "round" | "pose" | "stop" | "host" | "listen" | "pond" | "fire" | "shake" | "mode" | "quiz" | "gift" | "race" | "here";
         h?: number;
+        fire?: SquadFire;
+        was?: number | null;
+        endsAt?: number;
+        endsWhy?: SquadRoom["endsWhy"];
+        state?: SquadState;
+        keyAt?: number;
+        waitedAt?: number;
         /** here: h's page away since then (ms), or here again (null), taken as it is; host: handed as its host was 暂离 */
         away?: number | null;
         afk?: true;

@@ -595,6 +595,23 @@ function patchMember(r: SquadRoom, h: number | undefined, change: Partial<SquadM
   freedBy(r, next);
 }
 
+/** When a change told to the room (a stick on its fire, someone's 准备) was last taken as it is, the room not read (this page's clock) */
+let tookAt = -Infinity;
+/** A change as told, taken as it is; noted (but one's own 准备, which its own answer brings), for answers asked before it */
+function took(next: SquadRoom, note = true) {
+  room.set(withWant(next));
+  if (note) tookAt = Date.now();
+}
+
+/**
+ * The room as the answer to this page's own ask brings it (sent: when it was asked): set, and read again when a
+ * change was taken as told meanwhile (the answer may have been made before it, and would leave it out)
+ */
+function answered(r: SquadRoom | null, sent: number) {
+  setRoom(r);
+  if (r && tookAt >= sent) void loadSquadRoom().catch(() => {});
+}
+
 /** At the page's start (me().squad): their card, and the room they are in, read */
 export function startSquad(me: SquadMe) {
   if (card.get() === undefined) card.set(me.card);
@@ -631,6 +648,31 @@ export function heardSquad(raw: unknown) {
   if (tell.t === "room" && tell.what?.kind === "here") return patchMember(r, tell.what.h, { away: tell.what.away ?? undefined });
   if (tell.t === "room" && tell.what?.kind === "round" && tell.what.round) return patchMember(r, tell.what.h, tell.what.round);
   if (tell.t === "room" && tell.what?.kind === "pose" && tell.what.pose !== undefined) return patchMember(r, tell.what.h, { pose: tell.what.pose });
+  // 篝火 and 准备 as told, taken as they are (as the server's roomView has them: src/lib/server/squad.ts, change one and
+  // change the other), unless the room is being read now (what that brings may be from before it: read once more)
+  if (tell.t === "room" && tell.what && !loading) {
+    const what = tell.what;
+    // a stick on the fire this page has; one it has already (its own, as its answer brought it) is nothing new; on
+    // another (one told before it not here yet, or the room read since), the room read again
+    if (what.kind === "fire" && what.fire && what.was !== undefined) {
+      const f = what.fire;
+      const had = r.fire;
+      if (f.at === had.at && f.by === had.by && f.level === had.level && f.prog === had.prog) return;
+      if (what.was === null ? had.by === null : what.was === had.at) return took({ ...r, fire: f });
+    }
+    // 准备 on or off, with when the room ends by itself now, in the state, key and wait this page has them (else a new
+    // key or a round over came between, which made everyone ready again: read again); 「X 准备好了」 at once
+    if ((what.kind === "game" || what.kind === "unready") && what.endsAt !== undefined && what.endsWhy) {
+      const m = r.members.find((x) => x.h === what.h);
+      if (m && what.state === r.state && what.keyAt === r.keyAt && what.waitedAt === r.waitedAt) {
+        const on = what.kind === "game";
+        // so already (its own answer, or the room read since, brought it): nothing to change
+        if (m.inGame !== on) took({ ...r, endsAt: what.endsAt, endsWhy: what.endsWhy, members: r.members.map((x) => (x === m ? { ...x, inGame: on } : x)) }, m.h !== r.you);
+        if (on && m.h !== r.you) addFloat(fmt(T.squad.float.game, { name: m.name }));
+        return;
+      }
+    }
+  }
   if (tell.t === "say") {
     for (const it of tell.items) {
       if (!isPhrase(it.p) || !r.members.some((m) => m.h === it.h)) continue;
@@ -837,15 +879,16 @@ export async function leaveSquadRoom(to?: number) {
 
 /** The host's 开始游戏 (go), 结束这局 (wait) or 销毁房间 (end) */
 export async function squadState(to: "wait" | "go" | "end") {
+  const sent = Date.now();
   const { room: r } = await squadApi.state(to);
-  setRoom(r);
+  answered(r, sent);
   if (to === "end") notice.set(null);
   return r;
 }
 
-const after = async (p: Promise<{ room: SquadRoom | null }>) => {
+const after = async (p: Promise<{ room: SquadRoom | null }>, sent = Date.now()) => {
   const { room: r } = await p;
-  setRoom(r);
+  answered(r, sent);
   return r;
 };
 export const changeSquadKey = (key: string) => after(squadApi.key(key));
@@ -868,11 +911,12 @@ export function markSquadRound(next: SquadRound, onError: (e: unknown) => void) 
   roundTimer = window.setTimeout(() => {
     const want = roundWant;
     if (!want) return;
+    const sent = Date.now();
     squadApi
       .prefs(want)
       .then(({ room: next }) => {
         if (roundWant === want) roundWant = null;
-        setRoom(next);
+        answered(next, sent);
       })
       .catch((e) => {
         if (roundWant === want) roundWant = null;
@@ -903,11 +947,17 @@ export const fireEndLine = (last: number, top: number, best: number) =>
     ? fmt(T.squad.fire.endedBest, { top, time: fireTime(last), best })
     : fmt(T.squad.fire.ended, { top, time: fireTime(last) });
 
-/** 添一根: the stick on the room's fire (up a level once enough are on), a stick less in your hand, at once */
+/**
+ * 添一根: the stick on the room's fire (up a level once enough are on), a stick less in your hand, at once; the fire as
+ * the answer has it unless another was told or read meanwhile (which may be after it: this stick's own word, told to the
+ * room, puts it right if it was before it)
+ */
 export async function squadAddWood() {
+  const was = room.get()?.fire;
   const res = await squadApi.fire();
   const r = room.get();
-  if (r) room.set(withWant({ ...r, fire: res.fire, members: r.members.map((m) => (m.you ? { ...m, wood: res.wood, woodAt: res.woodAt } : m)) }));
+  const fire = r?.fire === was ? res.fire : r?.fire;
+  if (r && fire) room.set(withWant({ ...r, fire, members: r.members.map((m) => (m.you ? { ...m, wood: res.wood, woodAt: res.woodAt } : m)) }));
   return res;
 }
 
@@ -1514,8 +1564,9 @@ export async function joinSquadBy(by: { invite: string } | { declaration: string
 export const loadSquadFriends = async () => (await squadApi.friends()).friends;
 /** Invitations to these 触须之交 (their Friend ids): what each came to; your list of whom you invited, read again */
 export async function inviteToSquad(friends: string[]) {
+  const sent = Date.now();
   const res = await squadApi.invite(friends);
-  if (res.room) setRoom(res.room);
+  if (res.room) answered(res.room, sent);
   return res.sent;
 }
 /** What invitations came to, said once: all sent, or how many were not and the first one's why */
@@ -1528,8 +1579,9 @@ export function sentWords(sent: SquadInviteSent[]) {
 export const laterSquadInvite = (invite: string) => squadApi.later(invite);
 /** 宣言招人 from these roaches (null: your main one): what it reached */
 export async function declareSquadRoom(from: string[] | null) {
+  const sent = Date.now();
   const res = await squadApi.declare(from);
-  if (res.room) setRoom(res.room);
+  if (res.room) answered(res.room, sent);
   return res;
 }
 
@@ -1541,6 +1593,7 @@ export function forgetSquadPage() {
   // and no room to read again
   roomRead();
   hereAt = 0;
+  tookAt = -Infinity;
   roundWant = null;
   raceTaps = 0;
   for (const t of [raceCellTimer, raceReportTimer, raceTickTimer]) if (t) window.clearTimeout(t);

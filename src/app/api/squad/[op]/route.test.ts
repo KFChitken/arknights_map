@@ -374,7 +374,20 @@ describe("a room", () => {
     await goIn(a, room);
     const heard = hear(host);
     expect((await post(a, "game", { on: true })).body!.room).toMatchObject({ members: [{ inGame: false }, { inGame: true }] });
-    expect(heard).toContainEqual({ t: "room", room: room.id, what: { kind: "game", h: 2 } });
+    // told as it is, with when the room ends by itself now and the state, key and wait it was in, as the room shows them
+    const seen = (await post(host, "room")).body!.room as SquadRoom;
+    const told = (kind: string, r: SquadRoom) => ({ t: "room", room: room.id, what: { kind, h: 2, endsAt: r.endsAt, endsWhy: r.endsWhy, state: "wait", keyAt: r.keyAt, waitedAt: r.waitedAt } });
+    expect(heard).toContainEqual(told("game", seen));
+    expect(seen.endsWhy).toBe("idle");
+    // 准备 off: unready, which a page of before reads the room again at, saying nothing
+    await new Promise((done) => setTimeout(done, 5));
+    expect((await post(a, "game", { on: false })).body!.room).toMatchObject({ members: [{ inGame: false }, { inGame: false }] });
+    const off = (await post(host, "room")).body!.room as SquadRoom;
+    expect(off.endsAt).toBeGreaterThan(seen.endsAt);
+    expect(heard.at(-1)).toEqual(told("unready", off));
+    // the same again: nothing told
+    expect((await post(a, "game", { on: false })).status).toBe(200);
+    expect(heard.filter((x) => x.t === "room")).toHaveLength(2);
     const prefs = await post(a, "prefs", { card: { core: 1, strategy: 46, extras: [] } });
     expect((prefs.body!.room as SquadRoom).members[1]).toMatchObject({ core: 1, strategy: 46 });
     expect((await row(a)).squadCore).toBe(CARD.core);
