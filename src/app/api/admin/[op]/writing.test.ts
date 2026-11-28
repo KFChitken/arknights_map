@@ -70,7 +70,8 @@ async function account(email: string, name = "") {
 /** A device signed in as the player; the requests from here on come from it */
 async function device(userId: string) {
   const token = randomBytes(32).toString("base64url");
-  await db.insert(sessions).values({ id: createHash("sha256").update(token).digest("base64url"), userId, expiresAt: new Date(Date.now() + 20 * DAY) });
+  // runs out by the database's clock, as the site checks it, not the faked one
+  await db.insert(sessions).values({ id: createHash("sha256").update(token).digest("base64url"), userId, expiresAt: sql`now() + interval '20 days'` });
   jar.token = token;
   return token;
 }

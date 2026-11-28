@@ -99,7 +99,8 @@ type Device = { token: string; id: string };
 async function device(userId: string, minutesAgo = 0): Promise<Device> {
   const token = randomBytes(32).toString("base64url");
   const id = createHash("sha256").update(token).digest("base64url");
-  await db.insert(sessions).values({ id, userId, createdAt: new Date(Date.now() - minutesAgo * MINUTE), expiresAt: new Date(Date.now() + 20 * DAY) });
+  // runs out by the database's clock, as the site checks it, not the faked one
+  await db.insert(sessions).values({ id, userId, createdAt: new Date(Date.now() - minutesAgo * MINUTE), expiresAt: sql`now() + interval '20 days'` });
   jar.token = token;
   return { token, id };
 }

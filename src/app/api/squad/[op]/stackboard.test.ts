@@ -50,7 +50,8 @@ async function signIn(u: Pick<User, "id">) {
   let token = tokens.get(u.id);
   if (!token) {
     token = randomBytes(32).toString("base64url");
-    await db.insert(sessions).values({ id: createHash("sha256").update(token).digest("base64url"), userId: u.id, expiresAt: new Date(Date.now() + 7 * 86_400_000) });
+    // runs out by the database's clock, as the site checks it, not the faked one
+    await db.insert(sessions).values({ id: createHash("sha256").update(token).digest("base64url"), userId: u.id, expiresAt: sql`now() + interval '7 days'` });
     tokens.set(u.id, token);
   }
   jar.token = token;
