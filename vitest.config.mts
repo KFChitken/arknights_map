@@ -22,5 +22,9 @@ export default defineConfig({
     env: { DATABASE_URL: TEST_DATABASE_URL, AUTH_SECRET: "test-only-secret-0123456789" },
     // the server tests share one database
     fileParallelism: false,
+    // a slow or busy machine (a cloud one running the whole suite, GitHub's) takes a few seconds more than a laptop:
+    // vitest's 5 s failed tests there that pass alone in 3. A test that sets its own keeps it.
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
   },
 });

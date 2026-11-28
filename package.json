@@ -10,7 +10,8 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "check": "npm run typecheck && npm run lint && node scripts/i18n/extract.mts --check && node scripts/check-changelog.mjs && npm test && npm run build"
   },
   "dependencies": {
     "@amap/amap-jsapi-loader": "^1.0.1",

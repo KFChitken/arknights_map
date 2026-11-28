@@ -23,6 +23,9 @@ jobs:
           --health-retries 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          # every commit, for the change log's check of each commit pushed
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -31,3 +34,19 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
+      - run: node scripts/i18n/extract.mts --check
+      - name: One change log row on top, from each commit pushed
+        env:
+          BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ -n "$PR_BASE" ]; then
+            range="$PR_BASE..$PR_HEAD"
+          elif [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$BEFORE^{commit}"; then
+            # a new branch, or a push over history no longer here: its last commit alone
+            range="$GITHUB_SHA~1..$GITHUB_SHA"
+          else
+            range="$BEFORE..$GITHUB_SHA"
+          fi
+          node scripts/check-changelog.mjs "$range"
