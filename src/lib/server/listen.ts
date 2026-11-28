@@ -1,6 +1,6 @@
 import "server-only";
 import { and, count, desc, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
-import { fmt, T } from "@/i18n";
+import { fmt, lang, T } from "@/i18n";
 import { beijingDate } from "../beijing";
 import { COUNTED } from "../dashboard";
 import {
@@ -20,7 +20,7 @@ import {
 } from "../listen";
 import { isModHere, isOwnerEmail } from "./admins";
 import { db } from "./db";
-import { discoMode, listenMode } from "./env";
+import { discoMode, listenEnMode, listenMode } from "./env";
 import type { Exec } from "./guides";
 import { HttpError } from "./http";
 import { musicLink } from "./musicLinks";
@@ -61,9 +61,23 @@ export function discoOpen(user: Pick<UserRow, "id" | "email">): boolean {
   return listenOpen(user) && (mode === "on" || (mode === "admins" && (isOwnerEmail(user.email) || isModHere(user.id))));
 }
 
-/** What me() carries for the way in: undefined when the player may not listen; disco, when the disco is open to them */
+/**
+ * Whether the page asking has 听歌 for this player: the Chinese site's, for whoever may listen (listenOpen); the
+ * English site's (/en), only as LISTEN_EN says too: for all of them (on), the 站长 and the admins (admins), or nobody
+ */
+export function listenHere(user: Pick<UserRow, "id" | "email">): boolean {
+  if (!listenOpen(user)) return false;
+  if (lang() === "zh") return true;
+  const mode = listenEnMode();
+  return mode === "on" || (mode === "admins" && (isOwnerEmail(user.email) || isModHere(user.id)));
+}
+
+/**
+ * What me() carries for the way in: undefined when the page has no 听歌 for the player (listenHere); disco, when the
+ * disco is open to them; en, on the English site, which has it for them
+ */
 export async function listenMe(user: Pick<UserRow, "id" | "email">): Promise<ListenMe | undefined> {
-  if (!listenOpen(user)) return undefined;
+  if (!listenHere(user)) return undefined;
   const { paused, roomMax } = listenSettings();
   return {
     paused,
@@ -71,6 +85,7 @@ export async function listenMe(user: Pick<UserRow, "id" | "email">): Promise<Lis
     roomMax,
     mode: listenMode() === "on" ? "on" : "admins",
     ...(discoOpen(user) ? { disco: true as const } : {}),
+    ...(lang() === "zh" ? {} : { en: true as const }),
   };
 }
 

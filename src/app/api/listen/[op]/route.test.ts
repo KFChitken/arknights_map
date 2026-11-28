@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { withLang } from "@/i18n/server";
 import { FAV_MAX, LISTEN_GRACE_MS } from "@/lib/listen";
 import { loadMods } from "@/lib/server/admins";
 import { AGE_CHECK } from "@/lib/server/consent";
@@ -176,6 +177,51 @@ describe("听歌's requests, by who may listen", () => {
     expect((await call("GET", "play")).status).toBe(404);
     expect((await call("POST", "nothing")).status).toBe(404);
     expect((await call("POST", "toString")).status).toBe(404);
+  });
+
+  it("from the English site, are only for the 站长 and the admins unless LISTEN_EN opens them to all, or shuts them", async () => {
+    vi.stubEnv("LISTEN", "on");
+    await seedSongs();
+    const EN = { "x-zp-lang": "en" };
+    const player = await account("someone@example.com");
+    const owner = await account("owner@example.com");
+    const mod = await account("mod@example.com");
+    await db.insert(admins).values({ userId: mod.id, role: "mod", alias: "小管" });
+    await loadMods();
+    // the Chinese site's go by LISTEN alone, and me() says nothing of the English site
+    await signIn(player.id);
+    expect((await call("GET", "songs")).status).toBe(200);
+    expect(await listenMe(player)).toEqual({ paused: false, room: false, roomMax: 20, mode: "on" });
+    // LISTEN_EN unset is admins: from the English site a player is answered as if nothing were there
+    expect(await call("GET", "songs", undefined, EN)).toMatchObject({ status: 404, body: { error: "There's no such feature." } });
+    expect((await call("POST", "play", { song: "s1" }, EN)).status).toBe(404);
+    expect(await nowRow(player.id)).toBeNull();
+    await withLang("en", async () => expect(await listenMe(player)).toBeUndefined());
+    // and the 站长 and the admins have it there, as me() says
+    await signIn(owner.id);
+    expect((await call("GET", "songs", undefined, EN)).status).toBe(200);
+    await withLang("en", async () => expect(await listenMe(owner)).toEqual({ paused: false, room: false, roomMax: 20, mode: "on", en: true }));
+    await signIn(mod.id);
+    expect((await call("POST", "play", { song: "s1" }, EN)).status).toBe(200);
+    // on: every player LISTEN lets listen
+    vi.stubEnv("LISTEN_EN", "on");
+    await signIn(player.id);
+    expect((await call("POST", "play", { song: "s1" }, EN)).status).toBe(200);
+    await withLang("en", async () => expect(await listenMe(player)).toMatchObject({ mode: "on", en: true }));
+    // off: nobody there, the 站长 neither, and the Chinese site as it was
+    vi.stubEnv("LISTEN_EN", "off");
+    await signIn(owner.id);
+    expect((await call("GET", "songs", undefined, EN)).status).toBe(404);
+    await withLang("en", async () => expect(await listenMe(owner)).toBeUndefined());
+    expect((await call("GET", "songs")).status).toBe(200);
+    expect(await listenMe(owner)).toEqual({ paused: false, room: false, roomMax: 20, mode: "on" });
+    // LISTEN comes first: while it is admins, LISTEN_EN=on lets no other player in there
+    vi.stubEnv("LISTEN", "admins");
+    vi.stubEnv("LISTEN_EN", "on");
+    await withLang("en", async () => {
+      expect(await listenMe(player)).toBeUndefined();
+      expect(await listenMe(owner)).toEqual({ paused: false, room: false, roomMax: 20, mode: "admins", en: true });
+    });
   });
 
   it("wait while the admin asks the player to say again they are 18 or older", async () => {

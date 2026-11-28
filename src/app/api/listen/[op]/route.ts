@@ -6,7 +6,7 @@ import { AGE_CHECK, ageCheckNeeded, mustReconsent, reconsentNeeded } from "@/lib
 import { listenMode } from "@/lib/server/env";
 import { beatClip } from "@/lib/server/beatClips";
 import { HttpError, readJson, route } from "@/lib/server/http";
-import { heardSong, hotList, listenOpen, myFavs, playSong, setFav, stopSong } from "@/lib/server/listen";
+import { heardSong, hotList, listenHere, myFavs, playSong, setFav, stopSong } from "@/lib/server/listen";
 import {
   answerAsk,
   answerRequest,
@@ -125,7 +125,10 @@ const isOp = (op: string): op is Op => Object.hasOwn(OPS, op);
 
 type Ctx = { params: Promise<{ op: string }> };
 
-/** The player this request may act for, or the refusal: 404 to anyone LISTEN keeps it from, 401 to a visitor once it is open */
+/**
+ * The player this request may act for, or the refusal: 404 to anyone LISTEN keeps it from (asking from the English
+ * site, LISTEN_EN too: listenHere), 401 to a visitor once it is open
+ */
 async function playerFor(method: string, op: string): Promise<{ user: UserRow; op: Op }> {
   const notHere = () => new HttpError(404, T.server.routes.listen.notHere);
   if (listenMode() === "off" || !isOp(op) || OPS[op].method !== method) throw notHere();
@@ -134,7 +137,7 @@ async function playerFor(method: string, op: string): Promise<{ user: UserRow; o
     if (listenMode() === "on") throw new HttpError(401, T.server.common.signIn);
     throw notHere();
   }
-  if (!listenOpen(user)) throw notHere();
+  if (!listenHere(user)) throw notHere();
   if (!allow(`listen:${op}:${user.id}`, OPS[op].perMinute, 60_000)) throw new HttpError(429, T.server.routes.listen.tooFast);
   if (user.ageCheckAt) throw new HttpError(428, ageCheckNeeded(), AGE_CHECK);
   if (mustReconsent(user)) throw new HttpError(428, reconsentNeeded());

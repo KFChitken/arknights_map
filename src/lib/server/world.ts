@@ -163,7 +163,7 @@ import { radarRaw } from "./radarBlocks";
 import { nudge } from "./live";
 import { checkName } from "./nameWords";
 import { didTask, passesMe, wornPasses } from "./passes";
-import { listenMe, listenOpen } from "./listen";
+import { listenHere, listenMe, listenOpen } from "./listen";
 import { friendsListening, listenCalls, listenInbox, seeListenInvites } from "./listenRooms";
 import { seeSquadInvites, squadCalls, squadInbox, squadMe } from "./squad";
 import { squadOpen, squadShown } from "./squadOpen";
@@ -1199,11 +1199,18 @@ export async function poke(userId: string, publicId: string): Promise<{ againAt:
 const INBOX_REACTIONS = INBOX_DECLARATIONS;
 
 /**
- * Whether the page asking may be shown a way into 一起听 and 一起卫戍 at all: the Chinese site's may; the
- * English site has neither yet (src/components/MapApp.tsx), so its inbox leaves out their invitations, 想一起听
- * and the rooms of declarations that call people in
+ * Whether the page asking may be shown the ways into 一起听 (its invitations, 想一起听, and the rooms of declarations
+ * that call people in): the Chinese site's may; the English site's, to a player it has 听歌 for (listen.ts
+ * listenHere, LISTEN_EN), its inbox leaving them out for anyone else
  */
-const callsOnThisSite = () => lang() === "zh";
+async function listenCallsHere(userId: string, self?: UserRow | null): Promise<boolean> {
+  if (lang() === "zh") return true;
+  const u = self === undefined ? await userById(userId) : self;
+  return Boolean(u && listenHere(u));
+}
+
+/** And into 一起卫戍: the Chinese site's alone, as the English site has none yet (src/components/MapApp.tsx) */
+const squadCallsHere = () => lang() === "zh";
 
 /** Declarations as the inbox shows them (which ones: src/lib/server/declarationInbox.ts) */
 async function declarationItems(userId: string, ds: SeenDeclaration[]): Promise<InboxItem[]> {
@@ -1232,14 +1239,15 @@ async function declarationItems(userId: string, ds: SeenDeclaration[]): Promise<
     userId,
     ds.flatMap((x) => (x.d.template === "squad" && x.d.squadRoomId ? [x.d.squadRoomId] : [])),
   );
-  // none on the English site (callsOnThisSite)
-  const callsShown = callsOnThisSite();
+  // on the English site, none of 一起卫戍's, and 一起听's only where it has 听歌 for the player (listenCallsHere)
+  const listenCallsShown = await listenCallsHere(userId);
+  const squadCallsShown = squadCallsHere();
   return ds.map(({ d, seen, toFriend }) => {
     const id = `d:${d.id}`;
     const stored = storedDeclaration(d);
-    const call = callsShown && d.template === "listen" ? ((d.roomId && calls.get(d.roomId)) || { state: "over" as const, n: 0, max: 0 }) : null;
+    const call = listenCallsShown && d.template === "listen" ? ((d.roomId && calls.get(d.roomId)) || { state: "over" as const, n: 0, max: 0 }) : null;
     const squad =
-      callsShown && stored.template === "squad"
+      squadCallsShown && stored.template === "squad"
         ? (d.squadRoomId && squadCalled.get(d.squadRoomId)) || { state: "over" as const, n: 0, server: stored.server, level: stored.level }
         : null;
     return {
@@ -1412,11 +1420,11 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       replied: true,
     });
   }
-  const callsShown = callsOnThisSite();
-  if (self) items.push(...(await friendlyInbox(self, blocked)).filter((i) => callsShown || i.kind !== "listenAsk"));
+  const listenCallsShown = await listenCallsHere(userId, self);
+  if (self) items.push(...(await friendlyInbox(self, blocked)).filter((i) => listenCallsShown || i.kind !== "listenAsk"));
   // invitations to 一起听, while this player may listen; to 一起卫戍, while it is open to them
-  if (self && callsShown && listenOpen(self)) items.push(...(await listenInbox(userId, blocked)));
-  if (self && callsShown && squadOpen(self)) items.push(...(await squadInbox(userId, blocked)));
+  if (self && listenCallsShown && listenOpen(self)) items.push(...(await listenInbox(userId, blocked)));
+  if (self && squadCallsHere() && squadOpen(self)) items.push(...(await squadInbox(userId, blocked)));
   for (const id of GUIDE_IDS) items.push(...(await GUIDE_WORLD[id].inbox(userId)));
   items.push(...(await staffItems(userId, since)));
   return items.sort((x, y) => y.at - x.at);

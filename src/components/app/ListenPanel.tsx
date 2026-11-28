@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- the albums' covers, small JPEGs of our own, which next/image would only copy */
 
 import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { fmt, fmtParts, localPath, T } from "@/i18n";
+import { fmt, fmtParts, localPath, sentenceGap, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import { useDiscoChosen } from "@/lib/disco";
 import {
@@ -799,6 +799,7 @@ function PrivacyLine() {
     <p className="lp-privacy">
       <span>
         {T.listen.privacy}
+        {sentenceGap()}
         <a href={localPath("/privacy")} target="_blank" rel="noreferrer">
           {T.listen.privacyLink}
         </a>

@@ -367,7 +367,7 @@ describe("想一起听", () => {
     expect(QUIET_AFTER_LATER_MS).toBeLessThanOrEqual(INVITE_MS);
   });
 
-  it("and invitations to 一起听 are left out of 消息 on the English site, which has no 一起听", async () => {
+  it("and invitations to 一起听 are left out of 消息 on the English site, but for those it has 听歌 for (LISTEN_EN)", async () => {
     const { tong, lan } = await cast();
     await post(tong, "play", { song: "s1" });
     expect(await post(lan, "ask", { friend: friendKey(lan.id, tong.id) })).toMatchObject({ status: 200 });
@@ -376,9 +376,23 @@ describe("想一起听", () => {
     expect(await kinds(tong)).toContain("listenAsk");
     expect(await kinds(lan)).toContain("listenInvite");
     await withLang("en", async () => {
+      // LISTEN_EN unset (admins): neither is the 站长 or an admin
       expect(await kinds(tong)).not.toContain("listenAsk");
       expect(await kinds(lan)).not.toContain("listenInvite");
+      // an admin gets theirs there
+      await db.insert(admins).values({ userId: lan.id, role: "mod", alias: "小兰" });
+      await loadMods();
+      expect(await kinds(lan)).toContain("listenInvite");
+      expect(await kinds(tong)).not.toContain("listenAsk");
+      // on: everyone LISTEN lets listen; off: nobody
+      vi.stubEnv("LISTEN_EN", "on");
+      expect(await kinds(tong)).toContain("listenAsk");
+      vi.stubEnv("LISTEN_EN", "off");
+      expect(await kinds(lan)).not.toContain("listenInvite");
     });
+    // the Chinese site's as they were, whichever it is
+    expect(await kinds(tong)).toContain("listenAsk");
+    expect(await kinds(lan)).toContain("listenInvite");
   });
 
   it("is not for one in the same room already, nor while 互动 is paused, nor when TA stopped", async () => {

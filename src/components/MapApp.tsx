@@ -189,7 +189,7 @@ import { streamDropped, streamUp } from "./app/stream";
 import type { ListenCallItem, ListenCard, ListenInvite } from "./app/ListenOverlay";
 import type { ListenActs } from "./app/ListenPanel";
 import DiscoHost from "./app/DiscoHost";
-import { CALL_CARD_EVERY_MS } from "@/lib/listen";
+import { CALL_CARD_EVERY_MS, type ListenMe } from "@/lib/listen";
 import { SQUAD_MAX } from "@/lib/squad";
 import { BadgeWall, NewBadge } from "./app/Badges";
 import CloneMoveSheet from "./app/CloneMoveSheet";
@@ -404,6 +404,12 @@ function dockSceneFor(fresh: InboxItem[]): { kind: DockKind; from: DockFrom | nu
 
 /** A heard line that is one of the limited ones gets the 限定 tag */
 const isLimitedLine = (text: string) => EVENTS.some((e) => e.lines.some((l) => l.text === text));
+
+/**
+ * 听歌 on this page: where the server opened it to the player (me.listen); on the English site, only where it says
+ * that site has it for them too (en: LISTEN_EN), so a server from before it said so shows none there
+ */
+const listenOnPage = (listen: ListenMe | undefined) => Boolean(listen) && (lang() === "zh" || Boolean(listen?.en));
 
 const CHINA_VIEW: MapView = { lng: 108, lat: 34, zoom: 2.6 };
 /** How long the map waits for the account's data before it starts anyway, when this browser has no home to start at */
@@ -3011,7 +3017,7 @@ export default function MapApp({
     },
     // as 听歌's entry shows (listenShown, worked out further down), and not while it is paused
     listenAsk:
-      lang() === "zh" && me?.listen && !me.listen.paused && !isGray()
+      listenOnPage(me?.listen) && me?.listen && !me.listen.paused && !isGray()
         ? async (friendId) => {
             const friend = shownFriends.find((f) => f.id === friendId);
             if (friend) await askListen(friend);
@@ -3769,17 +3775,18 @@ export default function MapApp({
   // 佩丽卡监督 stands wherever this page put her, which the server never knows
   const shownLng = perlicaShown?.lng;
   const shownLat = perlicaShown?.lat;
+  const listenHereNow = listenOnPage(me?.listen);
   const shownFriends = useMemo(
     () =>
       friends.map((f) =>
         f.id === PERLICA_ID
           ? { ...f, roaches: shownLng !== undefined && shownLat !== undefined ? [perlicaRoach({ lng: shownLng, lat: shownLat }, true)] : [] }
-          : // 在听 is 听歌's, which /en does not have yet
-            f.listening && lang() !== "zh"
+          : // 在听 is 听歌's, which /en has only for some (listenOnPage)
+            f.listening && lang() !== "zh" && !listenHereNow
             ? { ...f, listening: undefined }
             : f,
       ),
-    [friends, shownLng, shownLat],
+    [friends, shownLng, shownLat, listenHereNow],
   );
   const selectedFriend =
     selected?.kind === "other" && selected.roach.friend
@@ -5104,7 +5111,7 @@ export default function MapApp({
               draft={p.draft}
               looks={me.looks}
               blocked={blocked}
-              listen={lang() === "zh" && Boolean(me.listen)}
+              listen={listenOnPage(me.listen)}
               passwordForm={p.password}
               onSave={saveProfile}
               onPerlicaTimer={switchPerlicaTimer}
@@ -5145,8 +5152,8 @@ export default function MapApp({
             onlyMains={me.onlyMains}
             onOpenOnlyMains={(draft) => setPanel({ kind: "onlyMains", back: { kind: "profile", draft } })}
             passes={me.passes}
-            // as 听歌's entry: not on /en
-            listen={lang() === "zh" && Boolean(me.listen)}
+            // as 听歌's entry (listenOnPage)
+            listen={listenOnPage(me.listen)}
             haimao={Boolean(me.haimao)}
             study={Boolean(me.study)}
             onPassOnMap={switchPassOnMap}
@@ -5624,8 +5631,9 @@ export default function MapApp({
   const layout: UiName = zoneTool ? "float" : ui;
   // 325大学习: a player where the server opened it to them (me.study), a visitor while it is open to everyone; not on /en
   const studyShown = lang() === "zh" && (me ? Boolean(me.study) : studyGuests && visitorShown);
-  // 听歌: where the server opened it to them (me.listen), and not while the site is gray (全站变灰); not on /en
-  const listenShown = lang() === "zh" && Boolean(me?.listen) && !gray;
+  // 听歌: where the server opened it to them (me.listen; on /en, LISTEN_EN too: listenOnPage), and not while the site is
+  // gray (全站变灰)
+  const listenShown = listenOnPage(me?.listen) && !gray;
   // 一起卫戍: where the server shows it to them (me.squad, SQUAD); on the Chinese site, as its words are Chinese only for now
   const squadShown = lang() === "zh" && Boolean(me?.squad);
   // 邀请 TA 一起卫戍 from a 触须之交's card: in a room waiting for players with a seat

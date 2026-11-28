@@ -23,7 +23,7 @@ import {
   YELLOWS_TO_WORRY,
 } from "@/lib/rules";
 import { RULES } from "@/lib/safety";
-import { discoMode, haimaoMode, listenMode, sponsorMode, squadMode, studyMode } from "@/lib/server/env";
+import { discoMode, haimaoMode, listenEnMode, listenMode, sponsorMode, squadMode, studyMode } from "@/lib/server/env";
 import { grayUntil } from "@/lib/server/siteSettings";
 
 export const generateMetadata = (): Metadata => ({ title: fmt(T.server.privacy.metaTitle, { site: siteName() }) });
@@ -33,8 +33,8 @@ const BACKUP_DAYS = 14;
 export default async function Privacy() {
   // rendered for each visit, so 全站变灰 shows here too
   await connection();
-  // 听歌, once it is open to everyone (LISTEN=on); on the Chinese site alone, the only one it is on
-  const listen = listenMode() === "on" && lang() === "zh";
+  // 听歌, once it is open to everyone (LISTEN=on): on the English site, once it is open to everyone there too (LISTEN_EN=on)
+  const listen = listenMode() === "on" && (lang() === "zh" || listenEnMode() === "on");
   return (
     <main className="doc">
       <GrayMode until={grayUntil(Date.now())} />

@@ -33,10 +33,11 @@ export type ListenTrack = { id: string; name: string; seconds: number; artists: 
 /**
  * What me() says of 听歌 for a player it is open to: whether the 站长 paused it for now (管理台 → 听歌), whether they
  * are in a room of 一起听 (the page then asks for it: a reload never takes anyone out of one), how many a room may
- * hold, whether it is open to all or to the 站长 and admins alone (LISTEN), which is whom they may invite, and whether
- * the disco is open to them (DISCO)
+ * hold, whether it is open to all or to the 站长 and admins alone (LISTEN), which is whom they may invite, whether
+ * the disco is open to them (DISCO), and, on the English site, that it has 听歌 for them (en: LISTEN_EN); never on the
+ * Chinese site's
  */
-export type ListenMe = { paused: boolean; room: boolean; roomMax: number; mode: "admins" | "on"; disco?: true };
+export type ListenMe = { paused: boolean; room: boolean; roomMax: number; mode: "admins" | "on"; disco?: true; en?: true };
 
 /** 新歌: the songs of this many of the newest albums, at most NEW_MAX of them */
 export const NEW_ALBUMS = 2;

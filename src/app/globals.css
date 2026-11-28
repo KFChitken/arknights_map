@@ -1238,6 +1238,8 @@ button.hm-wh-spin:focus-visible { outline: 3px solid #f2c230; outline-offset: 3p
 .list-row p.hearing { color: #0f7f83; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .friend-row-wrap { position: relative; }
 .friend-row-wrap .friend-row > div { padding-right: 98px; }
+/* English: 想一起听 is longer there (“Ask to join”), so the row keeps more room for it */
+:lang(en) .friend-row-wrap .friend-row > div { padding-right: 124px; }
 .friend-row-wrap .hear-ask { position: absolute; top: 50%; right: 24px; transform: translateY(-50%); padding: 4px 11px; font-size: 12.5px; }
 .friend-row-wrap .hear-ask:not(:disabled):active { transform: translateY(-50%) scale(0.97); }
 .event { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid #f0f1f3; font-size: 14px; }

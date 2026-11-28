@@ -196,6 +196,14 @@ export const fishGameMode = (): "on" | "admins" | "off" => (["on", "admins"] as 
 export const listenMode = (): "on" | "admins" | "off" => (["on", "admins"] as const).find((v) => v === process.env.LISTEN) ?? "off";
 
 /**
+ * 听歌 on the English site (/en; src/lib/server/listen.ts listenHere), for the players LISTEN lets listen: LISTEN_EN=on
+ * to all of them; admins (the default), only to the 站长 and the admins, to try it there first (Breeze, 2026-11-26:
+ * once its English is written, the admins first, then everyone); off, to nobody there. The Chinese site goes by
+ * LISTEN alone, whichever it is. Read on every use, so the tests can switch it.
+ */
+export const listenEnMode = (): "on" | "admins" | "off" => (["on", "off"] as const).find((v) => v === process.env.LISTEN_EN) ?? "admins";
+
+/**
  * 听歌's disco (src/lib/server/listen.ts discoOpen): DISCO=on gives every player who may listen each song's table of
  * beats (src/lib/dance.ts) with the song, and the way in; admins, only the 站长 and the admins (to try it on the live
  * site first); off (the default) nobody, and everything is as it was before there was one. Apart from LISTEN, so that

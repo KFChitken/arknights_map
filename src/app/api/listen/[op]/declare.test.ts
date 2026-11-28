@@ -347,7 +347,7 @@ describe("宣言一起听", () => {
     expect(await callOf(c)).toEqual({ state: "over", n: 0, max: 0 });
   });
 
-  it("show no room on the English site, which has no 一起听: the declaration is there, with nothing to go in at", async () => {
+  it("show no room on the English site but to those it has 听歌 for (LISTEN_EN): the declaration is there, with nothing to go in at", async () => {
     const { host, b } = await cast();
     await declared(host);
     expect(await callOf(b)).toEqual({ state: "open", n: 1, max: 20 });
@@ -355,6 +355,9 @@ describe("宣言一起听", () => {
       const [call] = await calls(b);
       expect(call.text).toMatch(/^I'm listening to “.+”\. Want to listen together\?$/);
       expect(call.listen).toBeUndefined();
+      // LISTEN_EN=on: its room, as on the Chinese site
+      vi.stubEnv("LISTEN_EN", "on");
+      expect(await callOf(b)).toEqual({ state: "open", n: 1, max: 20 });
     });
   });
 
