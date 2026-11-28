@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { fmt, T } from "@/i18n";
+import { fmt, lang, sentenceGap, sentences, T } from "@/i18n";
 import { badgeById } from "@/lib/badges";
 import { passChar } from "@/lib/passCatalog";
 import { padNo } from "@/lib/passes";
@@ -42,10 +42,16 @@ export const clockOf = (at: number, offset: number) => {
   return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
 };
 
+/** A line's first letter as a capital, where English starts a line with 「a Doctor」 or 「the Glamorous Producer」 */
+const upFirst = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** The day of the week as the day's line names it: 「一」; English 「Mon」, its one letters (S, M, T…) saying too little */
+const weekdayOf = (d: Date) => (lang() === "zh" ? T.records.weekdays[d.getUTCDay()] : d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" }));
+
 /** 「11 月 16 日 周一」, with 今天 or 昨天 before it */
 export function dayLabel(day: number, today: number, offset: number) {
   const d = onClock(dayStart(day, offset), offset);
-  const label = fmt(T.records.day, { m: d.getUTCMonth() + 1, d: d.getUTCDate(), w: T.records.weekdays[d.getUTCDay()] });
+  const label = fmt(T.records.day, { m: d.getUTCMonth() + 1, d: d.getUTCDate(), w: weekdayOf(d) });
   if (day === today) return fmt(T.records.today, { day: label });
   if (day === today - 1) return fmt(T.records.yesterday, { day: label });
   return label;
@@ -61,15 +67,20 @@ export function dateOf(at: number, offset: number) {
 export const slotName = (slot: number | null) =>
   slot === null || slot < 0 ? T.records.slot.roach : slot === 0 ? T.records.slot.main : fmt(T.records.slot.clone, { n: slot });
 
+/** slotName as a legend shows it on its own: English with a capital, 「Main roach」 */
+export const slotLabel = (slot: number) => (lang() === "zh" ? slotName(slot) : upFirst(slotName(slot)));
+
 /** Someone in a record, as named there: 「一位舟P」 once 触须之交 no more, else the fallback when nobody can tell */
 export const whoOf = (who: RecordWho, nobody: string) => (who === null ? nobody : "ex" in who ? T.records.timeline.who.ex : who.name);
 
 /**
  * A sentence with someone in it: a name keeps the spaces the sentence has around it, 「一只蟑螂」 and 「一位舟P」 do
- * without, as Chinese is written
+ * without, as Chinese is written. English keeps its spaces whoever it is, and a line it starts with 「a Doctor」
+ * starts with a capital (a name is left as its player wrote it)
  */
 export function withWho(text: string, who: RecordWho, nobody: string, more: Record<string, string | number> = {}) {
   if (who && "name" in who) return fmt(text, { ...more, who: who.name });
+  if (lang() !== "zh") return upFirst(fmt(text, { ...more, who: whoOf(who, nobody) }));
   return fmt(text, { ...more, who: "\u0000" }).replace(/ ?\u0000 ?/, whoOf(who, nobody));
 }
 
@@ -130,8 +141,9 @@ export function itemText(i: TimelineItem): string {
       return withWho(i.dir === "out" ? t.poke.out : t.poke.in, i.who, t.who.ex);
     case "guide": {
       const guide = GUIDE_NAMES[i.guide]?.() ?? i.guide;
-      if (i.dir === "out") return fmt(i.bold ? t.guide.out.bold : t.guide.out.sneaky, { guide });
-      return fmt(i.what === "greet" ? t.guide.greet : t.guide.in, { guide });
+      const line = i.dir === "out" ? fmt(i.bold ? t.guide.out.bold : t.guide.out.sneaky, { guide }) : fmt(i.what === "greet" ? t.guide.greet : t.guide.in, { guide });
+      // 「The Glamorous Producer tapped you」
+      return lang() === "zh" ? line : upFirst(line);
     }
     case "drink":
       return t.drink;
@@ -202,12 +214,12 @@ export function itemDetail(i: TimelineItem, offset: number): ReactNode | null {
     case "tout":
       return i.reply ? t.tout.detailBack : i.bold ? t.tout.detailBold : t.tout.detailSneaky;
     case "tin":
-      return `${fmt(t.tin.detail, { slot: slotName(i.slot) })}${i.bold ? t.tin.detailBold : t.tin.detailSneaky}`;
+      return sentences(fmt(t.tin.detail, { slot: slotName(i.slot) }), i.bold ? t.tin.detailBold : t.tin.detailSneaky);
     case "decl":
       return (
         <>
-          {i.roaches ? fmt(t.fromRoaches, { n: i.roaches }) : ""}
-          {i.drunk ? t.drunkLine : ""}
+          {i.roaches ? fmt(t.fromRoaches, { n: i.roaches }) + sentenceGap() : ""}
+          {i.drunk ? t.drunkLine + sentenceGap() : ""}
           {fmt(t.reachLine, { reach: reachText(i.recipients) })}
           {i.rx.length ? (
             <>

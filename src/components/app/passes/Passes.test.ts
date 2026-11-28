@@ -1,6 +1,7 @@
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { withLang } from "@/i18n/server";
 import { passCharNamed } from "@/lib/passCatalog";
 import { TASK_MAX, TICKETS_CAP, type FollowTask, type PassState, type Task, type WishOwned } from "@/lib/passes";
 import { Detail, DrawButtons, Home, layout, Odds, Peek, PoolPick, poolLine, sampleWidth, Tasks, WishEditor, WishSlots } from "./Passes";
@@ -254,6 +255,15 @@ describe("卡池 on the 寻访 page", () => {
         onClose: () => {},
       }),
     );
+
+  it("counts the headhunts without a wish in English on the English site, one or more; Chinese as it was", () => {
+    const wish = [1, 2, 3, 4, 5, 6];
+    withLang("en", () => {
+      expect(home(state([task("touch", 0, 0)], { wish, miss: 1 }))).toContain("<span><b>1</b> headhunt without a wish</span><span>A wish within <b>29</b> more</span>");
+      expect(home(state([task("touch", 0, 0)], { wish, miss: 2 }))).toContain("<span><b>2</b> headhunts without a wish</span>");
+    });
+    expect(home(state([task("touch", 0, 0)], { wish, miss: 2 }))).toContain("<span>已经<b>2</b>次没出心愿</span><span>最晚再<b>28</b>次</span>");
+  });
 
   it("is not there to pick while only both games' may be drawn from (PASS_POOLS not on), and is once one game's may", () => {
     const shut = home(state([task("touch", 0, 0)]));

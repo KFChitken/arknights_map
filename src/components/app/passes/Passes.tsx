@@ -923,7 +923,7 @@ export function Home({
           <div className="hp-t">
             {has ? (
               <>
-                <span>{fmtNodes(T.passes.missed, { b: <b>{miss}</b> })}</span>
+                <span>{fmtNodes(T.passes.missed, { b: <b>{miss}</b> }, { b: miss })}</span>
                 <span>{fmtNodes(T.passes.left, { b: <b>{pityLeft(miss)}</b> })}</span>
               </>
             ) : (

@@ -9,6 +9,7 @@ export const CHANGELOG: readonly ChangeRow[] = [
   { date: "2026-11-28", kind: "chore", text: "后台调整" },
   { date: "2026-11-28", kind: "chore", text: "后台调整" },
   { date: "2026-11-28", kind: "chore", text: "后台调整" },
+  { date: "2026-11-28", kind: "chore", text: "后台调整" },
   { date: "2026-11-22", kind: "tweak", text: "一些小改动" },
   { date: "2026-11-22", kind: "chore", text: "后台调整" },
   { date: "2026-11-22", kind: "chore", text: "后台调整" },

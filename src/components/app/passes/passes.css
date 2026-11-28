@@ -145,6 +145,9 @@ button.hw:focus-visible { outline: 2px solid var(--p-yellow); outline-offset: 2p
 .gt-h > b small { font-size: 11.5px; font-weight: 400; color: #8f97a3; letter-spacing: 0; margin-left: 6px; }
 .gt-h em { font-style: normal; white-space: nowrap; }
 .gt-h em b { font: 700 17px/1 var(--font-num); color: var(--p-yellow); margin: 0 3px 0 4px; }
+/* English: 「Daily tasks · Resets at 4 a.m. Beijing time」 and 「Claimed today 0/ 10」 don't fit one phone line, so the count goes under, kept to the right */
+:lang(en) .gt-h { flex-wrap: wrap; row-gap: 2px; }
+:lang(en) .gt-h em { margin-left: auto; }
 .gt-r {
   display: grid; grid-template-columns: 16px minmax(0, 1fr) auto 66px; align-items: center; gap: 8px; width: 100%; min-height: 30px;
   margin: 0; padding: 0 5px; border: 0; border-radius: 8px; background: transparent; color: #e6e9ee; font-size: 13px; line-height: 1.2; text-align: left;

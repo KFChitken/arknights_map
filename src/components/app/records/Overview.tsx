@@ -11,7 +11,7 @@ import { BadgeImg } from "../Badges";
 import { NEXT } from "../Homecoming";
 import RoachIcon from "../../RoachIcon";
 import type { ChartId } from "./Charts";
-import { CatIcon, clockOf, dateOf, slotName, type CAT } from "./parts";
+import { CatIcon, clockOf, dateOf, slotLabel, type CAT } from "./parts";
 
 /** A number over the last `days` days of the summary */
 export function sumOf(s: RecordsSummary, fields: DayField[], days = RECORD_DAYS) {
@@ -176,7 +176,7 @@ export function SlotBar({ slots }: { slots: number[] }) {
         {slots.map((v, i) => (
           <span key={i}>
             <i style={{ background: colors[i] }} />
-            {slotName(i)} <b>{v}</b>
+            {slotLabel(i)} <b>{v}</b>
           </span>
         ))}
       </div>

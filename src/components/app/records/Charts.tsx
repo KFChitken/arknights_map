@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { fmt, T } from "@/i18n";
+import { fmt, sentenceGap, T } from "@/i18n";
 import { fmtNodes } from "@/i18n/nodes";
 import { DAY_INDEX, dayStart, localDay, RANGES, RECORDS_FROM, type DayField, type Range, type RecordsSummary } from "@/lib/records";
 import { sumOf, SlotBar } from "./Overview";
@@ -244,7 +244,7 @@ export default function Charts({
             c.hoursNone
           ) : (
             <>
-              {hour === null && fmt(c.peak, { h: peak, h2: peak + 1 })}
+              {hour === null && fmt(c.peak, { h: peak, h2: peak + 1 }) + sentenceGap()}
               {fmt(c.hourSay, { h: shownHour, h2: shownHour + 1, n: hours[shownHour], p: Math.round((hours[shownHour] / hourTotal) * 100) })}
             </>
           )}

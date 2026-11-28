@@ -2,12 +2,13 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { T } from "@/i18n";
+import { withLang } from "@/i18n/server";
 import { EMPTY_PROFILE } from "@/lib/profile";
 import { DAY_FIELDS, DAY_INDEX, RECORD_DAYS, type RecordsSummary, type TimelineItem } from "@/lib/records";
 import type { Me } from "@/lib/world/types";
 import Charts from "./Charts";
 import Overview from "./Overview";
-import { itemSub, itemText } from "./parts";
+import { dayLabel, itemDetail, itemSub, itemText } from "./parts";
 
 const BEIJING = 480;
 const AT = Date.parse("2026-11-16T20:05:00+08:00");
@@ -41,6 +42,60 @@ describe("「我的记录」's sentences", () => {
     expect(itemSub(item({ ...drink, soberAt: null }), BEIJING)).toBe("醉到 08:00");
     expect(itemSub(item({ ...drink, soberAt: AT + 20 * 60_000 }), BEIJING)).toBe("20 分钟后醒了");
     expect(itemSub(item({ ...drink, soberAt: Date.parse("2026-11-17T01:30:00+08:00") }), BEIJING)).toBe("01:30 醒了");
+  });
+
+  it("keep their spaces on the English site, a line that starts with no one's name starting with a capital", () => {
+    withLang("en", () => {
+      const tout = { kind: "tout", bold: true, reply: false, clone: false, got: null } as const;
+      expect(itemText(item({ ...tout, who: { name: "redbean" } }))).toBe("Boldly tapped redbean");
+      expect(itemText(item({ ...tout, bold: false, who: null }))).toBe("Sneakily tapped a roach");
+      expect(itemText(item({ ...tout, clone: true, who: null }))).toBe("Boldly tapped a clone");
+      expect(itemText(item({ ...tout, reply: true, who: { ex: true } }))).toBe("Boldly tapped a Doctor back");
+
+      const tin = { kind: "tin", dir: "in", slot: 2, back: false, mine: null } as const;
+      expect(itemText(item({ ...tin, bold: false, who: null }))).toBe("A roach sneakily tapped your Clone 2");
+      expect(itemText(item({ ...tin, bold: true, slot: 0, who: null }))).toBe("A roach boldly tapped your main roach");
+      expect(itemText(item({ ...tin, bold: true, back: true, who: { ex: true } }))).toBe("A Doctor boldly tapped you back");
+      // a name as its player wrote it
+      expect(itemText(item({ ...tin, bold: true, who: { name: "aki" } }))).toBe("aki boldly tapped your Clone 2");
+
+      const note = { kind: "note", cat: "friend", answer: null, game: null } as const;
+      expect(itemText(item({ ...note, dir: "in", note: "visit", who: { ex: true } }))).toBe("A Doctor's clone came to visit you");
+      expect(itemText(item({ ...note, dir: "in", note: "blanket", who: { ex: true } }))).toBe("While you were asleep, a Doctor tucked you in");
+      expect(itemText(item({ ...note, dir: "out", note: "water", who: { ex: true } }))).toBe("Left a glass of water by a Doctor's pillow");
+      expect(itemText(item({ kind: "friend", cat: "friend", dir: "both", who: { ex: true } }))).toBe("Became Feeler Friends with a Doctor");
+      expect(itemText(item({ kind: "poke", cat: "friend", dir: "in", who: { ex: true } }))).toBe("A Doctor poked you while you were asleep");
+
+      const guide = { kind: "guide", cat: "guide", guide: "haimao", what: "touch", bold: true } as const;
+      expect(itemText(item({ ...guide, dir: "in" }))).toBe("The Glamorous Producer tapped you");
+      expect(itemText(item({ ...guide, dir: "out" }))).toBe("Boldly tapped the Glamorous Producer");
+      expect(itemText(item({ ...guide, dir: "in", guide: "amiya", what: "greet" }))).toBe("Guide Amiya greeted you");
+
+      expect(itemText(item({ kind: "move", cat: "roach", slot: 0, how: "move", km: 1084 }))).toBe("Your main roach moved 1084 km");
+      expect(itemText(item({ kind: "move", cat: "roach", slot: 1, how: "put", km: null }))).toBe("Placed your Clone 1");
+    });
+  });
+
+  it("run sentences together with a space on the English site, and name the day of the week in letters enough", () => {
+    withLang("en", () => {
+      const tin = { kind: "tin", dir: "in", slot: 0, back: false, mine: null, who: null } as const;
+      expect(itemDetail(item({ ...tin, bold: true }), BEIJING)).toBe("It was your main roach they tapped. It was a bold tap, so you can see their name and profile.");
+      expect(itemDetail(item({ ...tin, bold: false }), BEIJING)).toBe("It was your main roach they tapped. It was a sneaky tap, so you can't tell who.");
+      const decl = item({ kind: "decl", cat: "declare", text: "Rhodes Island, roll out!", recipients: 3, roaches: 2, drunk: true, rx: [] });
+      expect(renderToStaticMarkup(createElement("div", null, itemDetail(decl, BEIJING)))).toContain(
+        "Sent from 2 roaches. Drunk only. Fewer than 5 Doctors within 10 km got it.",
+      );
+      const today = Math.floor((AT + BEIJING * 60_000) / 86_400_000);
+      expect(dayLabel(today, today, BEIJING)).toBe("Today · Mon, 11/16");
+      expect(dayLabel(today - 1, today, BEIJING)).toBe("Yesterday · Sun, 11/15");
+      expect(dayLabel(today - 4, today, BEIJING)).toBe("Thu, 11/12");
+    });
+    // Chinese as it was: no spaces, and 周一
+    const today = Math.floor((AT + BEIJING * 60_000) / 86_400_000);
+    expect(dayLabel(today, today, BEIJING)).toBe("今天 · 11 月 16 日 周一");
+    expect(itemDetail(item({ kind: "tin", dir: "in", slot: 0, back: false, mine: null, who: null, bold: true }), BEIJING)).toBe(
+      "碰的是你的本体。TA 是大胆碰的，所以你能看到 TA 的名字和资料。",
+    );
   });
 });
 
@@ -101,5 +156,20 @@ describe("「我的记录」's tabs", () => {
     }
     expect(html).toContain("你最常在 21 点到 22 点出没。");
     expect(html).toContain("这段时间醉倒 1 次。");
+  });
+
+  it("draw them in English on the English site: a capital in the legend, a space between sentences", () => {
+    withLang("en", () => {
+      const charts = renderToStaticMarkup(createElement(Charts, { summary: sample(), offset: BEIJING, focus: null, onDay: () => {} }));
+      expect(charts).toContain("You&#x27;re around most between 21:00 and 22:00. 21:00–22:00: 120 times, 100% of everything you did.");
+      expect(charts).toContain("Main roach <b>");
+      expect(charts).toContain("Passed out drunk 1 time in this period.");
+      const overview = renderToStaticMarkup(
+        createElement(Overview, { me, summary: sample(), offset: BEIJING, passesOpen: false, onTile: () => {}, onChart: () => {}, onSeen: () => {}, onOpenBadges: () => {} }),
+      );
+      expect(overview).toContain("Your go-to line is “卫戍协议，启动！”: you&#x27;ve said it 10 times.");
+      expect(overview).toContain("You&#x27;ve done the most with 红豆: 9 taps between you, and 3 little gestures.");
+      expect(overview).toContain("Main roach <b>");
+    });
   });
 });

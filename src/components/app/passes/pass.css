@@ -161,6 +161,11 @@
 .zc .zsmp small { font: 700 4.4cqw/1 var(--font-num); letter-spacing: 0.5em; text-indent: 0.5em; margin-top: 1.2cqw; }
 .zc.tag .zsmp { top: 42%; font-size: 18cqw; padding: 2.6cqw 6cqw 2cqw; }
 .zc.tag .zsmp small { font-size: 6cqw; }
+/* English: 「SAMPLE」 over 「NOT YET DRAWN」 is three times as wide as 样张 over SAMPLE: smaller and closer set, to stay inside the pass */
+:lang(en) .zc .zsmp { font-size: 9.5cqw; letter-spacing: 0.14em; text-indent: 0.14em; }
+:lang(en) .zc .zsmp small { font-size: 3.8cqw; letter-spacing: 0.24em; text-indent: 0.24em; }
+:lang(en) .zc.tag .zsmp { font-size: 11.5cqw; }
+:lang(en) .zc.tag .zsmp small { font-size: 4.8cqw; }
 
 /* the strap and clip above a pass that pops up */
 .zp.hang { margin-top: calc(var(--w, 236px) * 0.64); }
