@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { withLang } from "@/i18n/server";
 import type { RoachPass } from "@/lib/passes";
 import { TOUCHES_PER_DAY } from "@/lib/rules";
 import type { PublicRoach } from "@/lib/world/types";
@@ -95,6 +96,17 @@ describe("a card's touches for today", () => {
     expect(disabled(html)).toBe(0);
     expect(text(html)).toContain(`今天总共还能碰 ${TOUCHES_PER_DAY} 次`);
     expect(text(html)).toContain("今天还能碰 TA 3 次");
+  });
+
+  it("counts them in English on the English site, one touch or more", () => {
+    const at = Date.now() + 5 * HOUR;
+    withLang("en", () => {
+      expect(text(card({ left: 1, at }))).toContain(`1 tap left today · Resets at ${turnsAtText(at)}`);
+      expect(text(card({ left: 57, at }))).toContain("57 taps left today");
+      const friend = (friendLeft: number) => text(card({ left: 50, at, friendLeft }, { friendName: "Mia", roach: { friend: true } }));
+      expect(friend(1)).toContain("Feeler Friends: 1 tap left on them today.");
+      expect(friend(2)).toContain("Feeler Friends: 2 taps left on them today.");
+    });
   });
 
   it("says nothing of them on a guide's card, who counts her own", () => {

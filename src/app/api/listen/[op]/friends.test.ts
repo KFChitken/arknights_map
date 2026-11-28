@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { withLang } from "@/i18n/server";
 import { COUNTED } from "@/lib/dashboard";
 import { INVITE_MS, LISTEN_ASK, QUIET_AFTER_LATER_MS, RX_EVERY_MS, RX_PER_SONG, SAID_MIN, type ListenRoom } from "@/lib/listen";
 import { EMPTY_PROFILE } from "@/lib/profile";
@@ -36,7 +37,7 @@ import {
 import { loadSettings, setGray, setListen } from "@/lib/server/siteSettings";
 import { forgetSaid, loadSongs, saveSongPlays, saveSongReactions } from "@/lib/server/songs";
 import { forgetStatCounts, saveStatCounts } from "@/lib/server/stats";
-import { friendKey, friends, saveProfile } from "@/lib/server/world";
+import { friendKey, friends, inbox, saveProfile } from "@/lib/server/world";
 import type { InboxItem } from "@/lib/world/types";
 import { POST } from "./route";
 
@@ -364,6 +365,20 @@ describe("想一起听", () => {
     expect(await latest()).toMatchObject({ seen: false });
     expect(await counted(COUNTED.listenInvite)).toBe(5);
     expect(QUIET_AFTER_LATER_MS).toBeLessThanOrEqual(INVITE_MS);
+  });
+
+  it("and invitations to 一起听 are left out of 消息 on the English site, which has no 一起听", async () => {
+    const { tong, lan } = await cast();
+    await post(tong, "play", { song: "s1" });
+    expect(await post(lan, "ask", { friend: friendKey(lan.id, tong.id) })).toMatchObject({ status: 200 });
+    expect((await post(tong, "open", { song: "s1", invite: [friendKey(tong.id, lan.id)] })).status).toBe(200);
+    const kinds = async (u: User) => (await inbox(u.id)).map((i) => i.kind);
+    expect(await kinds(tong)).toContain("listenAsk");
+    expect(await kinds(lan)).toContain("listenInvite");
+    await withLang("en", async () => {
+      expect(await kinds(tong)).not.toContain("listenAsk");
+      expect(await kinds(lan)).not.toContain("listenInvite");
+    });
   });
 
   it("is not for one in the same room already, nor while 互动 is paused, nor when TA stopped", async () => {

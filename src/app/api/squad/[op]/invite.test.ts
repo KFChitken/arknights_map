@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { withLang } from "@/i18n/server";
 import { COUNTED, declName } from "@/lib/dashboard";
 import { INVITE_MS, QUIET_AFTER_LATER_MS } from "@/lib/listen";
 import type { SquadFriend, SquadRoom } from "@/lib/squad";
@@ -402,6 +403,26 @@ describe("宣言招人", () => {
     expect((await post(b, "declare", {})).status).toBe(403);
     // one that is not of a 宣言招人 lets nobody in
     expect((await post(far, "join", { declaration: call.id.slice(2) })).status).toBe(404);
+  });
+
+  it("are not on the English site, which has no 一起卫戍: no invitation in 消息, and a 宣言招人 with no room to go in at", async () => {
+    const host = await player("host");
+    const a = await player("a", ["arknights"]);
+    const b = await player("b", ["arknights"]);
+    await befriend(host, a);
+    await roachOf(host, HERE);
+    await roachOf(b, NEAR);
+    await open(host, { server: "bili", level: 4 });
+    expect((await post(host, "invite", { friends: [friendKey(host.id, a.id)] })).body!.sent).toEqual([{ id: friendKey(host.id, a.id), ok: true }]);
+    expect((await post(host, "declare", {})).status).toBe(200);
+    expect(await invitesTo(a)).toHaveLength(1);
+    expect((await callsTo(b))[0]).toMatchObject({ squad: { state: "open", n: 1 } });
+    await withLang("en", async () => {
+      expect(await invitesTo(a)).toEqual([]);
+      const [call] = await callsTo(b);
+      expect(call.text).toBe("Stronghold Protocol, launch! 3 more needed, you in?");
+      expect(call.squad).toBeUndefined();
+    });
   });
 
   it("is not for a room only for 触须之交, and one refused leaves the room free to call again", async () => {

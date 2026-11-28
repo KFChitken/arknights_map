@@ -1,7 +1,7 @@
 import "server-only";
 import { createHmac, randomUUID } from "node:crypto";
 import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, not, or, sql, type AnyColumn } from "drizzle-orm";
-import { fmt, T } from "@/i18n";
+import { fmt, lang, T } from "@/i18n";
 import { guideById, guideOfItem, GUIDES, type GuideId } from "../guides";
 import { TICK_MISSING } from "../consent";
 import {
@@ -1198,6 +1198,13 @@ export async function poke(userId: string, publicId: string): Promise<{ againAt:
 /** Of the replies to your declarations too, only the newest (rules.ts INBOX_DECLARATIONS) */
 const INBOX_REACTIONS = INBOX_DECLARATIONS;
 
+/**
+ * Whether the page asking may be shown a way into 一起听 and 一起卫戍 at all: the Chinese site's may; the
+ * English site has neither yet (src/components/MapApp.tsx), so its inbox leaves out their invitations, 想一起听
+ * and the rooms of declarations that call people in
+ */
+const callsOnThisSite = () => lang() === "zh";
+
 /** Declarations as the inbox shows them (which ones: src/lib/server/declarationInbox.ts) */
 async function declarationItems(userId: string, ds: SeenDeclaration[]): Promise<InboxItem[]> {
   if (!ds.length) return [];
@@ -1225,12 +1232,14 @@ async function declarationItems(userId: string, ds: SeenDeclaration[]): Promise<
     userId,
     ds.flatMap((x) => (x.d.template === "squad" && x.d.squadRoomId ? [x.d.squadRoomId] : [])),
   );
+  // none on the English site (callsOnThisSite)
+  const callsShown = callsOnThisSite();
   return ds.map(({ d, seen, toFriend }) => {
     const id = `d:${d.id}`;
     const stored = storedDeclaration(d);
-    const call = d.template === "listen" ? ((d.roomId && calls.get(d.roomId)) || { state: "over" as const, n: 0, max: 0 }) : null;
+    const call = callsShown && d.template === "listen" ? ((d.roomId && calls.get(d.roomId)) || { state: "over" as const, n: 0, max: 0 }) : null;
     const squad =
-      stored.template === "squad"
+      callsShown && stored.template === "squad"
         ? (d.squadRoomId && squadCalled.get(d.squadRoomId)) || { state: "over" as const, n: 0, server: stored.server, level: stored.level }
         : null;
     return {
@@ -1403,10 +1412,11 @@ export async function inbox(userId: string): Promise<InboxItem[]> {
       replied: true,
     });
   }
-  if (self) items.push(...(await friendlyInbox(self, blocked)));
+  const callsShown = callsOnThisSite();
+  if (self) items.push(...(await friendlyInbox(self, blocked)).filter((i) => callsShown || i.kind !== "listenAsk"));
   // invitations to 一起听, while this player may listen; to 一起卫戍, while it is open to them
-  if (self && listenOpen(self)) items.push(...(await listenInbox(userId, blocked)));
-  if (self && squadOpen(self)) items.push(...(await squadInbox(userId, blocked)));
+  if (self && callsShown && listenOpen(self)) items.push(...(await listenInbox(userId, blocked)));
+  if (self && callsShown && squadOpen(self)) items.push(...(await squadInbox(userId, blocked)));
   for (const id of GUIDE_IDS) items.push(...(await GUIDE_WORLD[id].inbox(userId)));
   items.push(...(await staffItems(userId, since)));
   return items.sort((x, y) => y.at - x.at);

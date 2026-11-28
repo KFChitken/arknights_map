@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { withLang } from "@/i18n/server";
 import { COUNTED, declName } from "@/lib/dashboard";
 import { ROOM_KEEP_MS, type ListenCall, type ListenRoom } from "@/lib/listen";
 import { DECLARATIONS_PER_DAY } from "@/lib/rules";
@@ -344,6 +345,17 @@ describe("宣言一起听", () => {
     expect(await roomRow(room.id)).toBeNull();
     expect((await db.select().from(declarations))[0].roomId).toBeNull();
     expect(await callOf(c)).toEqual({ state: "over", n: 0, max: 0 });
+  });
+
+  it("show no room on the English site, which has no 一起听: the declaration is there, with nothing to go in at", async () => {
+    const { host, b } = await cast();
+    await declared(host);
+    expect(await callOf(b)).toEqual({ state: "open", n: 1, max: 20 });
+    await withLang("en", async () => {
+      const [call] = await calls(b);
+      expect(call.text).toMatch(/^I'm listening to “.+”\. Want to listen together\?$/);
+      expect(call.listen).toBeUndefined();
+    });
   });
 
   it("let in, with no say of the host's, those it reached alone, counted as come by a declaration", async () => {

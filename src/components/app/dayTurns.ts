@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fmt, T } from "@/i18n";
+import { fmt, lang, T } from "@/i18n";
 import { TOUCHES_PER_DAY, TOUCHES_PER_PERSON_PER_DAY } from "@/lib/rules";
 import { nextSiteDayAt } from "@/lib/siteDay";
 
 /**
  * When the site's day turns (04:00 Beijing time, src/lib/siteDay.ts) as the device's own clock says it:
  * 「凌晨 4 点」 in Beijing, 「下午 2 点」 in Chicago's winter, 「凌晨 1 点半」 in India. offsetMin is the
- * device's Date.getTimezoneOffset() at that moment, given only by the tests.
+ * device's Date.getTimezoneOffset() at that moment, given only by the tests. English says midnight's
+ * hour as 12 ("12 a.m.") and the minutes in two digits ("1:45 a.m."); Chinese says 凌晨 0 点.
  */
 export function turnsAtText(at: number, offsetMin = new Date(at).getTimezoneOffset()) {
   const local = new Date(at - offsetMin * 60_000);
@@ -16,7 +17,12 @@ export function turnsAtText(at: number, offsetMin = new Date(at).getTimezoneOffs
   const m = local.getUTCMinutes();
   const w = T.cards.dayTurns;
   const part = h < 6 ? w.dawn : h < 12 ? w.morning : h === 12 ? w.noon : h < 18 ? w.afternoon : w.evening;
-  return fmt(m === 0 ? w.at : m === 30 ? w.atHalf : w.atMinute, { part, h: h > 12 ? h - 12 : h, m });
+  const zh = lang() === "zh";
+  return fmt(m === 0 ? w.at : m === 30 ? w.atHalf : w.atMinute, {
+    part,
+    h: h > 12 ? h - 12 : h === 0 && !zh ? 12 : h,
+    m: zh ? m : String(m).padStart(2, "0"),
+  });
 }
 
 /** How long from now till then, in whole hours and minutes, the minutes rounded up: never less than a minute */

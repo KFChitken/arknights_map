@@ -636,7 +636,7 @@ export function OtherInkCard({
 export type Quota = { left: number; at: number; friendLeft?: number };
 
 /** 「你们是触须之交，今天还能碰 TA n 次。」 */
-const friendsLeft = (n: number) => fmtNodes(T.cards.touched.friendsLeft, { n: <b>{n}</b> });
+const friendsLeft = (n: number) => fmtNodes(T.cards.touched.friendsLeft, { n: <b>{n}</b> }, { n });
 
 /** What a card says of today's touches before anything else: none left at all, or none left on this 触须之交 */
 function quotaHint(quota: Quota | null): ReactNode {
@@ -684,7 +684,7 @@ export function TouchButtons({
 /** 「今天总共还能碰 n 次 · 凌晨 4 点刷新」; with none left, 「凌晨 4 点刷新 · 还有 2 小时 40 分」 */
 export function TouchesLine({ left, at }: { left: number; at: number }) {
   const when = turnsAtText(at);
-  if (left > 0) return <p className="touch-quota">{fmtNodes(T.cards.touchesLeft, { n: <b>{left}</b>, at: when })}</p>;
+  if (left > 0) return <p className="touch-quota">{fmtNodes(T.cards.touchesLeft, { n: <b>{left}</b>, at: when }, { n: left })}</p>;
   const { h, m } = waitParts(at);
   const w = T.cards.dayTurns;
   const wait = h && m ? fmtNodes(w.hoursMinutes, { h: <b>{h}</b>, m: <b>{m}</b> }) : h ? fmtNodes(w.hours, { h: <b>{h}</b> }) : fmtNodes(w.minutes, { m: <b>{m}</b> });

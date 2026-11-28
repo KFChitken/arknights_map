@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { withLang } from "@/i18n/server";
 import { TOUCHES_PER_DAY, TOUCHES_PER_PERSON_PER_DAY } from "@/lib/rules";
 import { nextSiteDayAt } from "@/lib/siteDay";
 import { touchesNow, turnsAtText, waitParts } from "./dayTurns";
@@ -32,6 +33,19 @@ describe("when the day turns, in the device's own time", () => {
       "晚上 6 点",
       "晚上 11 点",
     ]);
+  });
+
+  it("says it in English on the English site: midnight as 12 a.m., the minutes in two digits", () => {
+    withLang("en", () => {
+      expect(turnsAtText(TURN, -480)).toBe("4 a.m."); // Beijing
+      expect(turnsAtText(TURN, 360)).toBe("2 p.m."); // Chicago in winter
+      expect(turnsAtText(TURN, -240)).toBe("12 a.m."); // Dubai
+      expect(turnsAtText(TURN, -330)).toBe("1:30 a.m."); // India
+      expect(turnsAtText(TURN, -345)).toBe("1:45 a.m."); // Nepal
+      const at = (h: number, m = 0) => turnsAtText(Date.UTC(2026, 10, 20, h, m), 0);
+      expect([0, 5, 11, 12, 13, 23].map((h) => at(h))).toEqual(["12 a.m.", "5 a.m.", "11 a.m.", "12 p.m.", "1 p.m.", "11 p.m."]);
+      expect(at(0, 5)).toBe("12:05 a.m.");
+    });
   });
 
   it("counts the wait in hours and minutes, the minutes rounded up, never under a minute", () => {
