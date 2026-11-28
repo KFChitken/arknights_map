@@ -599,6 +599,10 @@ button.link.stack-under { align-self: flex-start; font-size: 13px; text-decorati
   .hm-st-day { padding: 3px 9px; font-size: 12px; }
   .hm-st-bar { width: 40px; }
 }
+/* English: the day's label runs long ("Looking back · Day 8 · So Generous, Pharaoh"), so where the row has no room
+   for it whole it goes under her 好感度, at the right, rather than end in … */
+:lang(en) .hm-st-hud { flex-wrap: wrap; row-gap: 6px; }
+:lang(en) .hm-st-day { margin-left: auto; }
 .hm-st-lh { position: absolute; z-index: 1; right: 1%; top: 5%; height: 118%; aspect-ratio: 625 / 750; pointer-events: none; }
 .hm-st-lh img { position: absolute; left: 0; top: 0; width: 100%; height: auto; opacity: 0; transition: opacity 0.18s; }
 .hm-st-lh img.on { opacity: 1; }
@@ -767,6 +771,8 @@ button.hm-wh-spin:focus-visible { outline: 3px solid #f2c230; outline-offset: 3p
 .hm-wh-prize svg { flex: none; width: 44px; height: 30px; }
 .hm-wh-prize span { min-width: 0; overflow-wrap: anywhere; }
 .hm-wh-prize b { display: block; color: #f2c230; font-weight: 600; }
+/* English: its longer words ("Headhunting", "Declaration") are wider than half a phone allows, and overflow-wrap would cut them, so one prize a row */
+:lang(en) .hm-wh-prizes { grid-template-columns: minmax(0, 1fr); }
 .hm-wh-side .hm-wh-count { color: #c3cde0; font-size: 14px; }
 .hm-wh-side .hm-wh-note { padding-top: 10px; border-top: 1px solid #2c3b5c; color: #aab6cc; font-size: 13.5px; line-height: 1.5; }
 .hm-wh-float {
